@@ -984,18 +984,18 @@ namespace AlarmClockApp
 
             // 兩隻腳（走路擺動）
             float swing = (float)(Math.Sin(legPhase) * 6);
-            float ly = cy + r * 0.80f, lendY = cy + r * 1.12f;
+            float ly = cy + r * 0.80f, lendY = cy + r * 1.02f;
             float lxL = cx - r * 0.42f, lxR = cx + r * 0.42f;
             g.DrawLine(legPen, lxL, ly, lxL - swing, lendY);
             g.DrawLine(legPen, lxR, ly, lxR + swing, lendY);
-            g.FillEllipse(redDark, lxL - swing - 9, lendY - 4, 20, 11);
-            g.FillEllipse(redDark, lxR + swing - 11, lendY - 4, 20, 11);
+            g.FillEllipse(redDark, lxL - swing - 13, lendY - 5, 28, 15);
+            g.FillEllipse(redDark, lxR + swing - 15, lendY - 5, 28, 15);
 
-            // 兩側鈴鐺 + 頂部按鈕
-            float rb = r * 0.52f;
-            g.FillEllipse(gold, cx - r * 0.62f - rb, cy - r * 0.95f - rb, rb * 2, rb * 2);
-            g.FillEllipse(gold, cx + r * 0.62f - rb, cy - r * 0.95f - rb, rb * 2, rb * 2);
-            g.FillEllipse(gold, cx - 6, cy - r - 12, 12, 11);
+            // 兩側鈴鐺（縮小）+ 頂部按鈕
+            float rb = r * 0.38f;
+            g.FillEllipse(gold, cx - r * 0.52f - rb, cy - r * 0.92f - rb, rb * 2, rb * 2);
+            g.FillEllipse(gold, cx + r * 0.52f - rb, cy - r * 0.92f - rb, rb * 2, rb * 2);
+            g.FillEllipse(gold, cx - 5, cy - r - 10, 10, 9);
 
             // 鐘體
             g.FillEllipse(red, cx - r, cy - r, r * 2, r * 2);
