@@ -440,13 +440,28 @@ namespace AlarmClockApp
                 Text = "⏸ 暫停所有鬧鐘", Left = 256, Top = 194, Width = 256, Height = 34,
                 Font = new Font("Microsoft JhengHei", 10F, FontStyle.Bold),
                 Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
-                FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(255, 235, 236), ForeColor = Color.Firebrick,
+                FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = Color.Firebrick,
                 Cursor = Cursors.Hand
             };
             chkMasterStop.FlatAppearance.BorderSize = 0;
-            chkMasterStop.FlatAppearance.CheckedBackColor = Color.FromArgb(255, 214, 214);
             chkMasterStop.CheckedChanged += (s, e) => OnMasterStopChanged();
-            RoundControl(chkMasterStop, 9);
+            chkMasterStop.CheckedChanged += (s, e) => chkMasterStop.Invalidate();
+            bool hovM = false;
+            chkMasterStop.MouseEnter += (s, e) => { hovM = true; chkMasterStop.Invalidate(); };
+            chkMasterStop.MouseLeave += (s, e) => { hovM = false; chkMasterStop.Invalidate(); };
+            chkMasterStop.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var rect = chkMasterStop.ClientRectangle; rect.Width -= 1; rect.Height -= 1;
+                Color fill = chkMasterStop.Checked ? Color.FromArgb(255, 205, 205)
+                    : (hovM ? Color.FromArgb(255, 224, 225) : Color.FromArgb(255, 235, 236));
+                using (var path = RoundedPath(rect, 9))
+                using (var br = new SolidBrush(fill))
+                    g.FillPath(br, path);
+                TextRenderer.DrawText(g, chkMasterStop.Text, chkMasterStop.Font, chkMasterStop.ClientRectangle,
+                    Color.Firebrick, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            };
             grpList.Controls.Add(btnDelete);
             grpList.Controls.Add(btnToggle);
             grpList.Controls.Add(chkMasterStop);
@@ -475,31 +490,54 @@ namespace AlarmClockApp
             FormClosing += MainForm_FormClosing;
         }
 
-        private static void StyleButton(Button b, bool primary)
+        // 圓角矩形路徑（用於反鋸齒自繪，邊緣平滑無毛邊）
+        private static GraphicsPath RoundedPath(Rectangle r, int radius)
         {
-            b.FlatStyle = FlatStyle.Flat;
-            b.FlatAppearance.BorderSize = 0;
-            b.BackColor = primary ? Accent : Color.FromArgb(233, 236, 243);
-            b.ForeColor = primary ? Color.White : Color.FromArgb(55, 58, 70);
-            b.FlatAppearance.MouseOverBackColor = primary ? Color.FromArgb(92, 107, 192) : Color.FromArgb(219, 223, 233);
-            b.FlatAppearance.MouseDownBackColor = primary ? Color.FromArgb(48, 63, 159) : Color.FromArgb(205, 210, 222);
-            b.Font = new Font("Microsoft JhengHei", primary ? 10F : 9F, primary ? FontStyle.Bold : FontStyle.Regular);
-            b.Cursor = Cursors.Hand;
-            RoundControl(b, 9);
+            int d = radius * 2;
+            if (d > r.Width) d = r.Width;
+            if (d > r.Height) d = r.Height;
+            var p = new GraphicsPath();
+            p.AddArc(r.X, r.Y, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
         }
 
-        // 設定圓角外框（用 Region 裁切成圓角矩形）
-        private static void RoundControl(Control c, int radius)
+        // 自繪圓角按鈕：底色填白（與卡片融合）+ 反鋸齒圓角，邊緣不再有毛邊
+        private static void StyleButton(Button b, bool primary)
         {
-            int d = radius * 2, w = c.Width, h = c.Height;
-            if (w <= d || h <= d) return;
-            var p = new GraphicsPath();
-            p.AddArc(0, 0, d, d, 180, 90);
-            p.AddArc(w - d, 0, d, d, 270, 90);
-            p.AddArc(w - d, h - d, d, d, 0, 90);
-            p.AddArc(0, h - d, d, d, 90, 90);
-            p.CloseFigure();
-            c.Region = new Region(p);
+            Color fill = primary ? Accent : Color.FromArgb(233, 236, 243);
+            Color hover = primary ? Color.FromArgb(92, 107, 192) : Color.FromArgb(220, 224, 235);
+            Color down = primary ? Color.FromArgb(48, 63, 159) : Color.FromArgb(206, 211, 223);
+            Color fg = primary ? Color.White : Color.FromArgb(55, 58, 70);
+
+            b.FlatStyle = FlatStyle.Flat;
+            b.FlatAppearance.BorderSize = 0;
+            b.BackColor = Color.White;     // 四角填白，與白色群組卡片融合
+            b.ForeColor = fg;
+            b.Font = new Font("Microsoft JhengHei", primary ? 10F : 9F, primary ? FontStyle.Bold : FontStyle.Regular);
+            b.Cursor = Cursors.Hand;
+            b.Region = null;
+
+            bool hov = false, dn = false;
+            b.MouseEnter += (s, e) => { hov = true; b.Invalidate(); };
+            b.MouseLeave += (s, e) => { hov = false; dn = false; b.Invalidate(); };
+            b.MouseDown += (s, e) => { dn = true; b.Invalidate(); };
+            b.MouseUp += (s, e) => { dn = false; b.Invalidate(); };
+            b.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var rect = b.ClientRectangle; rect.Width -= 1; rect.Height -= 1;
+                Color c = dn ? down : (hov ? hover : fill);
+                using (var path = RoundedPath(rect, 9))
+                using (var br = new SolidBrush(c))
+                    g.FillPath(br, path);
+                TextRenderer.DrawText(g, b.Text, b.Font, b.ClientRectangle, fg,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            };
         }
 
         private void UpdateDayBoxes()
