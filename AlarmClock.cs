@@ -261,6 +261,12 @@ namespace AlarmClockApp
         private Alarm editing;   // 正在編輯的鬧鐘（null = 新增模式）
         private System.Threading.EventWaitHandle showEvent;   // 第二次啟動時用來通知本視窗顯示
 
+        // LINE 群組通知設定
+        private bool lineOn;
+        private string lineToken = "";
+        private string lineTo = "";
+        private Button btnLine;
+
         public MainForm()
         {
             BuildUi();
@@ -449,7 +455,10 @@ namespace AlarmClockApp
             cboSort.SelectedIndex = 0;
             cboSort.SelectedIndexChanged += (s, e) => RefreshList();
             grpList.Controls.Add(cboSort);
-            grpList.Controls.Add(new Label { Text = "（雙擊項目可編輯）", Left = 214, Top = 26, Width = 160, Font = normal, ForeColor = Color.Gray });
+            grpList.Controls.Add(new Label { Text = "（雙擊項目可編輯）", Left = 214, Top = 26, Width = 130, Font = normal, ForeColor = Color.Gray });
+            btnLine = new Button { Text = "LINE 通知設定…", Left = 360, Top = 21, Width = 152, Height = 28 };
+            btnLine.Click += (s, e) => ShowLineDialog();
+            grpList.Controls.Add(btnLine);
 
             lstAlarms = new ListBox
             {
@@ -503,7 +512,7 @@ namespace AlarmClockApp
             // 統一按鈕樣式
             StyleButton(btnAdd, true);
             StyleButton(btnCountdown, true);
-            foreach (var b in new[] { btnNow, btnBrowse, btnTest, btnClearSound, btnTestPopup, btnDelete, btnToggle, btnAddPreset, btnDelPreset })
+            foreach (var b in new[] { btnNow, btnBrowse, btnTest, btnClearSound, btnTestPopup, btnDelete, btnToggle, btnAddPreset, btnDelPreset, btnLine })
                 StyleButton(b, false);
 
             tray = new NotifyIcon
@@ -951,6 +960,47 @@ namespace AlarmClockApp
                 ? DateTime.Now.ToString("HH:mm:ss")
                 : string.Format("{0:00}:{1:00}:{2:00}", a.Hour, a.Minute, a.Second);
             new AlarmPopup(a.Text, bigTime, a.SoundFile, a.StaySeconds).Show();
+
+            // 同時推播到 LINE 群組
+            if (lineOn && lineToken.Length > 0 && lineTo.Length > 0)
+            {
+                string msg = "⏰ " + bigTime + "  " + a.Text;
+                string tok = lineToken, to = lineTo;
+                var th = new System.Threading.Thread(() => SendLine(tok, to, msg)) { IsBackground = true };
+                th.Start();
+            }
+        }
+
+        // 呼叫 LINE Messaging API push 發送文字訊息；回傳結果字串（成功/失敗原因）
+        private static string SendLine(string token, string to, string text)
+        {
+            try
+            {
+                System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072; // TLS 1.2
+                var req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create("https://api.line.me/v2/bot/message/push");
+                req.Method = "POST";
+                req.ContentType = "application/json";
+                req.Headers["Authorization"] = "Bearer " + token;
+                string body = "{\"to\":\"" + to + "\",\"messages\":[{\"type\":\"text\",\"text\":\"" + JsonEsc(text) + "\"}]}";
+                byte[] bytes = Encoding.UTF8.GetBytes(body);
+                req.ContentLength = bytes.Length;
+                using (var st = req.GetRequestStream()) st.Write(bytes, 0, bytes.Length);
+                using (var resp = (System.Net.HttpWebResponse)req.GetResponse())
+                    return "成功（HTTP " + (int)resp.StatusCode + "）";
+            }
+            catch (System.Net.WebException ex)
+            {
+                string detail = ex.Message;
+                try { using (var r = new StreamReader(ex.Response.GetResponseStream())) detail = r.ReadToEnd(); }
+                catch { }
+                return "失敗：" + detail;
+            }
+            catch (Exception ex) { return "失敗：" + ex.Message; }
+        }
+
+        private static string JsonEsc(string s)
+        {
+            return (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", "\\n");
         }
 
         private void LoadAlarms()
@@ -987,7 +1037,15 @@ namespace AlarmClockApp
                 if (File.Exists(settingsPath))
                 {
                     foreach (var line in File.ReadAllLines(settingsPath))
-                        if (line.StartsWith("paused=")) paused = line.Substring(7).Trim() == "1";
+                    {
+                        int eq = line.IndexOf('=');
+                        if (eq < 0) continue;
+                        string key = line.Substring(0, eq), val = line.Substring(eq + 1);
+                        if (key == "paused") paused = val.Trim() == "1";
+                        else if (key == "line_on") lineOn = val.Trim() == "1";
+                        else if (key == "line_token") lineToken = val;
+                        else if (key == "line_to") lineTo = val;
+                    }
                 }
                 chkMasterStop.Checked = paused;
                 tray.Text = paused ? "桌面鬧鐘（已暫停）" : "桌面鬧鐘（執行中）";
@@ -998,8 +1056,61 @@ namespace AlarmClockApp
 
         private void SaveSettings()
         {
-            try { File.WriteAllText(settingsPath, "paused=" + (paused ? "1" : "0")); }
+            try
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine("paused=" + (paused ? "1" : "0"));
+                sb.AppendLine("line_on=" + (lineOn ? "1" : "0"));
+                sb.AppendLine("line_token=" + lineToken);
+                sb.AppendLine("line_to=" + lineTo);
+                File.WriteAllText(settingsPath, sb.ToString());
+            }
             catch { }
+        }
+
+        // LINE 通知設定對話框
+        private void ShowLineDialog()
+        {
+            using (var dlg = new Form())
+            {
+                dlg.Text = "LINE 群組通知設定";
+                dlg.ClientSize = new Size(460, 250);
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.MaximizeBox = false; dlg.MinimizeBox = false;
+                dlg.Font = new Font("Microsoft JhengHei", 9F);
+                try { dlg.Icon = Icon; } catch { }
+
+                var chk = new CheckBox { Text = "啟用 LINE 群組通知（鬧鐘響時同步發送）", Left = 16, Top = 14, Width = 420, Checked = lineOn };
+                var lblTok = new Label { Text = "Channel access token：", Left = 16, Top = 48, Width = 430 };
+                var txtTok = new TextBox { Left = 16, Top = 70, Width = 428, Text = lineToken };
+                var lblTo = new Label { Text = "群組 ID（groupId，C 開頭）：", Left = 16, Top = 104, Width = 430 };
+                var txtTo = new TextBox { Left = 16, Top = 126, Width = 428, Text = lineTo };
+                var lblResult = new Label { Left = 16, Top = 162, Width = 428, Height = 36, ForeColor = Color.DimGray };
+
+                var btnTestLine = new Button { Text = "測試發送", Left = 16, Top = 206, Width = 110, Height = 30 };
+                btnTestLine.Click += (s, e) =>
+                {
+                    string tk = txtTok.Text.Trim(), to = txtTo.Text.Trim();
+                    if (tk.Length == 0 || to.Length == 0) { lblResult.Text = "請先填入 token 與群組 ID。"; return; }
+                    lblResult.Text = "發送中…";
+                    Application.DoEvents();
+                    lblResult.Text = "測試結果：" + SendLine(tk, to, "✅ 桌面鬧鐘 LINE 通知測試");
+                };
+                var btnOk = new Button { Text = "儲存", Left = 244, Top = 206, Width = 95, Height = 30, DialogResult = DialogResult.OK };
+                var btnCancel = new Button { Text = "取消", Left = 349, Top = 206, Width = 95, Height = 30, DialogResult = DialogResult.Cancel };
+
+                dlg.Controls.AddRange(new Control[] { chk, lblTok, txtTok, lblTo, txtTo, lblResult, btnTestLine, btnOk, btnCancel });
+                dlg.AcceptButton = btnOk; dlg.CancelButton = btnCancel;
+
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    lineOn = chk.Checked;
+                    lineToken = txtTok.Text.Trim();
+                    lineTo = txtTo.Text.Trim();
+                    SaveSettings();
+                }
+            }
         }
     }
 
