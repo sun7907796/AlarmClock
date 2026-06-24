@@ -253,6 +253,12 @@ namespace AlarmClockApp
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "alarms.txt");
         private readonly string settingsPath =
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.txt");
+        private readonly string remindersPath =
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "reminders.txt");
+        private GroupBox grpAdd;
+        private Button btnAddPreset;
+        private Button btnDelPreset;
+        private Alarm editing;   // 正在編輯的鬧鐘（null = 新增模式）
 
         public MainForm()
         {
@@ -297,7 +303,7 @@ namespace AlarmClockApp
             header.Controls.Add(lblClock);
 
             // ── 新增鬧鐘 群組 ──
-            var grpAdd = new GroupBox
+            grpAdd = new GroupBox
             {
                 Text = "新增鬧鐘", Left = 12, Top = 66, Width = 524, Height = 300,
                 BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
@@ -344,7 +350,7 @@ namespace AlarmClockApp
             grpAdd.Controls.Add(chkLoop);
 
             // 停留時間
-            grpAdd.Controls.Add(new Label { Text = "停留時間：", Left = 12, Top = 124, Width = 76, Font = normal, ForeColor = Color.Black });
+            grpAdd.Controls.Add(new Label { Text = "動態UI停留時間：", Left = 12, Top = 124, Width = 76, Font = normal, ForeColor = Color.Black });
             numStay = new NumericUpDown { Left = 90, Top = 121, Width = 60, Minimum = 1, Maximum = 999, Value = 3, Font = normal };
             cboStayUnit = new ComboBox { Left = 156, Top = 121, Width = 56, DropDownStyle = ComboBoxStyle.DropDownList, Font = normal };
             cboStayUnit.Items.AddRange(new object[] { "分", "秒" });
@@ -357,14 +363,15 @@ namespace AlarmClockApp
 
             // 提醒項目（下拉，可自行輸入）
             grpAdd.Controls.Add(new Label { Text = "提醒項目：", Left = 12, Top = 156, Width = 76, Font = normal, ForeColor = Color.Black });
-            cboReminder = new ComboBox { Left = 90, Top = 153, Width = 416, DropDownStyle = ComboBoxStyle.DropDown, Font = normal };
-            cboReminder.Items.AddRange(new object[]
-            {
-                "起身活動！", "喝水休息一下", "起來走一走", "該吃藥了",
-                "準備開會", "讓眼睛休息一下", "下班囉！", "深呼吸放鬆一下"
-            });
-            cboReminder.Text = "起身活動！";
+            cboReminder = new ComboBox { Left = 90, Top = 153, Width = 352, DropDownStyle = ComboBoxStyle.DropDown, Font = normal };
+            LoadReminders();   // 從 reminders.txt 載入選項（無檔時用預設並建立）
+            btnAddPreset = new Button { Text = "＋", Left = 446, Top = 152, Width = 28, Height = 26 };
+            btnAddPreset.Click += (s, e) => AddPreset();
+            btnDelPreset = new Button { Text = "－", Left = 478, Top = 152, Width = 28, Height = 26 };
+            btnDelPreset.Click += (s, e) => DeletePreset();
             grpAdd.Controls.Add(cboReminder);
+            grpAdd.Controls.Add(btnAddPreset);
+            grpAdd.Controls.Add(btnDelPreset);
 
             // 響鈴音樂
             grpAdd.Controls.Add(new Label { Text = "響鈴音樂：", Left = 12, Top = 188, Width = 76, Font = normal, ForeColor = Color.Black });
@@ -384,7 +391,7 @@ namespace AlarmClockApp
                 soundPath = File.Exists(DefaultSoundFile) ? DefaultSoundFile : "";
                 txtSound.Text = SoundLabel(); StopTest();
             };
-            btnTestPopup = new Button { Text = "測試動態", Left = 300, Top = 216, Width = 90, Height = 26 };
+            btnTestPopup = new Button { Text = "測試動態UI", Left = 300, Top = 216, Width = 90, Height = 26 };
             btnTestPopup.Click += (s, e) =>
                 new AlarmPopup(CurrentText(), DateTime.Now.ToString("HH:mm:ss"), soundPath, CurrentStaySeconds()).Show();
             grpAdd.Controls.Add(btnTest);
@@ -393,9 +400,9 @@ namespace AlarmClockApp
 
             // 主要新增按鈕
             btnAdd = new Button { Text = "＋ 新增鬧鐘", Left = 90, Top = 254, Width = 200, Height = 34 };
-            btnAdd.Click += (s, e) => AddClockAlarm();
+            btnAdd.Click += (s, e) => { if (editing != null) UpdateEditing(); else AddClockAlarm(); };
             btnCountdown = new Button { Text = "＋ 倒數新增", Left = 296, Top = 254, Width = 210, Height = 34 };
-            btnCountdown.Click += (s, e) => AddCountdownAlarm();
+            btnCountdown.Click += (s, e) => { if (editing != null) ExitEdit(); else AddCountdownAlarm(); };
             grpAdd.Controls.Add(btnAdd);
             grpAdd.Controls.Add(btnCountdown);
 
@@ -412,6 +419,7 @@ namespace AlarmClockApp
             cboSort.SelectedIndex = 0;
             cboSort.SelectedIndexChanged += (s, e) => RefreshList();
             grpList.Controls.Add(cboSort);
+            grpList.Controls.Add(new Label { Text = "（雙擊項目可編輯）", Left = 214, Top = 26, Width = 160, Font = normal, ForeColor = Color.Gray });
 
             lstAlarms = new ListBox
             {
@@ -420,6 +428,7 @@ namespace AlarmClockApp
                 BorderStyle = BorderStyle.FixedSingle, IntegralHeight = false
             };
             lstAlarms.DrawItem += LstAlarms_DrawItem;
+            lstAlarms.DoubleClick += (s, e) => { var a = lstAlarms.SelectedItem as Alarm; if (a != null) EnterEdit(a); };
             grpList.Controls.Add(lstAlarms);
 
             btnDelete = new Button { Text = "刪除選取", Left = 12, Top = 194, Width = 110, Height = 34 };
@@ -449,7 +458,7 @@ namespace AlarmClockApp
             // 統一按鈕樣式
             StyleButton(btnAdd, true);
             StyleButton(btnCountdown, true);
-            foreach (var b in new[] { btnNow, btnBrowse, btnTest, btnClearSound, btnTestPopup, btnDelete, btnToggle })
+            foreach (var b in new[] { btnNow, btnBrowse, btnTest, btnClearSound, btnTestPopup, btnDelete, btnToggle, btnAddPreset, btnDelPreset })
                 StyleButton(b, false);
 
             tray = new NotifyIcon
@@ -496,6 +505,140 @@ namespace AlarmClockApp
         private void UpdateDayBoxes()
         {
             foreach (var c in chkDays) { c.Enabled = chkRepeat.Checked; if (!chkRepeat.Checked) c.Checked = false; }
+        }
+
+        // ---- 提醒項目下拉選單：自行新增 / 刪除 ----
+        private void LoadReminders()
+        {
+            cboReminder.Items.Clear();
+            string[] defaults = { "起身活動！", "喝水休息一下", "起來走一走", "該吃藥了",
+                                  "準備開會", "讓眼睛休息一下", "下班囉！", "深呼吸放鬆一下" };
+            try
+            {
+                if (File.Exists(remindersPath))
+                    foreach (var line in File.ReadAllLines(remindersPath))
+                    {
+                        var t = line.Trim();
+                        if (t.Length > 0 && !cboReminder.Items.Contains(t)) cboReminder.Items.Add(t);
+                    }
+            }
+            catch { }
+            if (cboReminder.Items.Count == 0) { cboReminder.Items.AddRange(defaults); SaveReminders(); }
+            cboReminder.Text = cboReminder.Items[0].ToString();
+        }
+
+        private void SaveReminders()
+        {
+            try
+            {
+                var list = new List<string>();
+                foreach (var it in cboReminder.Items) list.Add(it.ToString());
+                File.WriteAllLines(remindersPath, list.ToArray());
+            }
+            catch { }
+        }
+
+        private void AddPreset()
+        {
+            string t = (cboReminder.Text ?? "").Trim();
+            if (t.Length == 0) return;
+            if (!cboReminder.Items.Contains(t)) { cboReminder.Items.Add(t); SaveReminders(); }
+            cboReminder.Text = t;
+        }
+
+        private void DeletePreset()
+        {
+            string t = (cboReminder.Text ?? "").Trim();
+            int idx = cboReminder.Items.IndexOf(t);
+            if (idx < 0)
+            {
+                MessageBox.Show(this, "目前的文字不在選單中，無法刪除。\n（請先從下拉選單選一個項目）",
+                    "刪除選項", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            cboReminder.Items.RemoveAt(idx);
+            SaveReminders();
+            cboReminder.Text = cboReminder.Items.Count > 0 ? cboReminder.Items[0].ToString() : "";
+        }
+
+        // ---- 編輯清單項目 ----
+        private void EnterEdit(Alarm a)
+        {
+            editing = a;
+            cboReminder.Text = a.Text;
+            soundPath = a.SoundFile;
+            txtSound.Text = SoundLabel();
+
+            // 停留時間
+            if (a.StaySeconds <= 0) chkNoAuto.Checked = true;
+            else
+            {
+                chkNoAuto.Checked = false;
+                if (a.StaySeconds % 60 == 0) { cboStayUnit.SelectedIndex = 0; numStay.Value = Math.Min(a.StaySeconds / 60, 999); }
+                else { cboStayUnit.SelectedIndex = 1; numStay.Value = Math.Min(a.StaySeconds, 999); }
+            }
+
+            if (a.Countdown)
+            {
+                numCdMin.Value = Math.Min(a.IntervalSeconds / 60, 1440);
+                numCdSec.Value = a.IntervalSeconds % 60;
+                chkLoop.Checked = a.Loop;
+            }
+            else
+            {
+                timePicker.Value = DateTime.Today.AddHours(a.Hour).AddMinutes(a.Minute).AddSeconds(a.Second);
+                chkRepeat.Checked = a.Repeat;          // 觸發 UpdateDayBoxes
+                for (int i = 0; i < 7; i++) chkDays[i].Checked = a.Repeat && (a.Days & (1 << i)) != 0;
+            }
+
+            btnAdd.Text = "✓ 更新";
+            btnCountdown.Text = "✗ 取消編輯";
+            grpAdd.Text = a.Countdown ? "編輯鬧鐘（倒數）" : "編輯鬧鐘";
+        }
+
+        private void ExitEdit()
+        {
+            editing = null;
+            btnAdd.Text = "＋ 新增鬧鐘";
+            btnCountdown.Text = "＋ 倒數新增";
+            grpAdd.Text = "新增鬧鐘";
+        }
+
+        private void UpdateEditing()
+        {
+            var a = editing;
+            if (a == null) return;
+            a.Text = CurrentText();
+            a.SoundFile = soundPath;
+            a.StaySeconds = CurrentStaySeconds();
+
+            if (a.Countdown)
+            {
+                int iv = (int)numCdMin.Value * 60 + (int)numCdSec.Value;
+                if (iv <= 0) iv = 1;
+                a.IntervalSeconds = iv;
+                a.Loop = chkLoop.Checked;
+                a.Target = DateTime.Now.AddSeconds(iv);
+                a.Enabled = true;
+            }
+            else
+            {
+                int h = timePicker.Value.Hour, m = timePicker.Value.Minute, sec = timePicker.Value.Second;
+                foreach (var o in alarms)
+                    if (o != a && !o.Countdown && o.Hour == h && o.Minute == m && o.Second == sec)
+                    {
+                        MessageBox.Show(this, string.Format("已存在 {0:00}:{1:00}:{2:00} 的鬧鐘。", h, m, sec),
+                            "重複時間", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                a.Hour = h; a.Minute = m; a.Second = sec;
+                a.Repeat = chkRepeat.Checked;
+                int days = 0;
+                if (chkRepeat.Checked) for (int i = 0; i < 7; i++) if (chkDays[i].Checked) days |= (1 << i);
+                a.Days = days;
+                a.LastFired = null;
+            }
+            SaveAlarms(); RefreshList(); ExitEdit();
         }
 
         // 清單項目自繪：停用或暫停中的項目以灰色顯示
@@ -670,6 +813,7 @@ namespace AlarmClockApp
         {
             var a = lstAlarms.SelectedItem as Alarm;
             if (a == null) return;
+            if (a == editing) ExitEdit();
             alarms.Remove(a); SaveAlarms(); RefreshList();
         }
 
