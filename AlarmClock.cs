@@ -431,10 +431,13 @@ namespace AlarmClockApp
                 Text = "⏸ 暫停所有鬧鐘", Left = 256, Top = 194, Width = 256, Height = 34,
                 Font = new Font("Microsoft JhengHei", 10F, FontStyle.Bold),
                 Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
-                FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = Color.Firebrick
+                FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(255, 235, 236), ForeColor = Color.Firebrick,
+                Cursor = Cursors.Hand
             };
-            chkMasterStop.FlatAppearance.BorderColor = Color.Firebrick;
+            chkMasterStop.FlatAppearance.BorderSize = 0;
+            chkMasterStop.FlatAppearance.CheckedBackColor = Color.FromArgb(255, 214, 214);
             chkMasterStop.CheckedChanged += (s, e) => OnMasterStopChanged();
+            RoundControl(chkMasterStop, 9);
             grpList.Controls.Add(btnDelete);
             grpList.Controls.Add(btnToggle);
             grpList.Controls.Add(chkMasterStop);
@@ -466,12 +469,28 @@ namespace AlarmClockApp
         private static void StyleButton(Button b, bool primary)
         {
             b.FlatStyle = FlatStyle.Flat;
-            b.FlatAppearance.BorderSize = primary ? 0 : 1;
-            b.FlatAppearance.BorderColor = Color.FromArgb(205, 208, 218);
-            b.BackColor = primary ? Accent : Color.White;
+            b.FlatAppearance.BorderSize = 0;
+            b.BackColor = primary ? Accent : Color.FromArgb(233, 236, 243);
             b.ForeColor = primary ? Color.White : Color.FromArgb(55, 58, 70);
+            b.FlatAppearance.MouseOverBackColor = primary ? Color.FromArgb(92, 107, 192) : Color.FromArgb(219, 223, 233);
+            b.FlatAppearance.MouseDownBackColor = primary ? Color.FromArgb(48, 63, 159) : Color.FromArgb(205, 210, 222);
             b.Font = new Font("Microsoft JhengHei", primary ? 10F : 9F, primary ? FontStyle.Bold : FontStyle.Regular);
             b.Cursor = Cursors.Hand;
+            RoundControl(b, 9);
+        }
+
+        // 設定圓角外框（用 Region 裁切成圓角矩形）
+        private static void RoundControl(Control c, int radius)
+        {
+            int d = radius * 2, w = c.Width, h = c.Height;
+            if (w <= d || h <= d) return;
+            var p = new GraphicsPath();
+            p.AddArc(0, 0, d, d, 180, 90);
+            p.AddArc(w - d, 0, d, d, 270, 90);
+            p.AddArc(w - d, h - d, d, d, 0, 90);
+            p.AddArc(0, h - d, d, d, 90, 90);
+            p.CloseFigure();
+            c.Region = new Region(p);
         }
 
         private void UpdateDayBoxes()
@@ -988,8 +1007,8 @@ namespace AlarmClockApp
             float lxL = cx - r * 0.42f, lxR = cx + r * 0.42f;
             g.DrawLine(legPen, lxL, ly, lxL - swing, lendY);
             g.DrawLine(legPen, lxR, ly, lxR + swing, lendY);
-            g.FillEllipse(redDark, lxL - swing - 13, lendY - 5, 28, 15);
-            g.FillEllipse(redDark, lxR + swing - 15, lendY - 5, 28, 15);
+            g.FillEllipse(redDark, lxL - swing - 13, lendY - 5, 28, 20);
+            g.FillEllipse(redDark, lxR + swing - 15, lendY - 5, 28, 20);
 
             // 兩側鈴鐺（縮小）+ 頂部按鈕
             float rb = r * 0.38f;
