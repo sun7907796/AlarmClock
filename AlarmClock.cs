@@ -259,6 +259,7 @@ namespace AlarmClockApp
         private Button btnAddPreset;
         private Button btnDelPreset;
         private Alarm editing;   // 正在編輯的鬧鐘（null = 新增模式）
+        private System.Threading.EventWaitHandle showEvent;   // 第二次啟動時用來通知本視窗顯示
 
         public MainForm()
         {
@@ -266,9 +267,38 @@ namespace AlarmClockApp
             LoadAlarms();
             RefreshList();
             LoadSettings();   // 還原暫停狀態
+            StartShowListener();
             timer = new Timer { Interval = 1000 };
             timer.Tick += Timer_Tick;
             timer.Start();
+        }
+
+        // 監聽「再次啟動」訊號：有人重複開啟 exe 時，把本視窗叫回前景（即使縮在系統匣）
+        private void StartShowListener()
+        {
+            try
+            {
+                bool created;
+                showEvent = new System.Threading.EventWaitHandle(
+                    false, System.Threading.EventResetMode.AutoReset, Program.ShowEventName, out created);
+            }
+            catch { return; }
+
+            var t = new System.Threading.Thread(() =>
+            {
+                while (true)
+                {
+                    try { showEvent.WaitOne(); } catch { break; }
+                    try
+                    {
+                        if (IsDisposed) break;
+                        BeginInvoke((Action)ShowFromTray);
+                    }
+                    catch { break; }
+                }
+            });
+            t.IsBackground = true;
+            t.Start();
         }
 
         private void BuildUi()
@@ -318,7 +348,7 @@ namespace AlarmClockApp
                 Left = 90, Top = 25, Width = 100, Font = normal,
                 Format = DateTimePickerFormat.Custom, CustomFormat = "HH:mm:ss", ShowUpDown = true
             };
-            btnNow = new Button { Text = "現在", Left = 196, Top = 24, Width = 54, Height = 26 };
+            btnNow = new Button { Text = "現在時間", Left = 196, Top = 24, Width = 60, Height = 26 };
             btnNow.Click += (s, e) => timePicker.Value = DateTime.Now;
             chkRepeat = new CheckBox { Text = "重複", Left = 258, Top = 27, Width = 56, Font = normal, ForeColor = Color.Black };
             chkRepeat.CheckedChanged += (s, e) => UpdateDayBoxes();
@@ -1336,12 +1366,30 @@ namespace AlarmClockApp
 
     static class Program
     {
+        public const string MutexName = @"Local\DEOM_AlarmClock_SingleInstance";
+        public const string ShowEventName = @"Local\DEOM_AlarmClock_Show";
+
         [STAThread]
         static void Main()
         {
+            bool createdNew;
+            var mutex = new System.Threading.Mutex(true, MutexName, out createdNew);
+            if (!createdNew)
+            {
+                // 已有一個在執行：通知它把視窗叫回前景，然後自己結束（避免多開造成設定混亂）
+                try
+                {
+                    var ev = System.Threading.EventWaitHandle.OpenExisting(ShowEventName);
+                    ev.Set();
+                }
+                catch { }
+                return;
+            }
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());
+            GC.KeepAlive(mutex);   // 讓 mutex 存活至程式結束
         }
     }
 }
