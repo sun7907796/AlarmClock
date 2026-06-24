@@ -823,7 +823,7 @@ namespace AlarmClockApp
 
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
-            Width = 440; Height = 300;
+            Width = 440; Height = 280;
             TopMost = true;
             ShowInTaskbar = false;
             Font = new Font("Microsoft JhengHei", 9F);
@@ -970,81 +970,53 @@ namespace AlarmClockApp
                     new RectangleF(bubbleRect.Left, bubbleRect.Top + 2, bubbleRect.Width, 42), sf);
         }
 
-        // 貓造型：白色貓身 + 三角耳 + 眼睛 + 尾巴，肚子上的時鐘面放提醒文字
+        // 時鐘造型：紅色鐘體 + 金色鈴鐺，肚子（白色錶面）放提醒文字（無眼睛、無指針）
         private void DrawClock(Graphics g)
         {
-            float cx = ClockCx;
-            float bodyTop = 126, bodyW = 150, bodyH = 150;
-            float bLeft = cx - bodyW / 2, bBottom = bodyTop + bodyH;
-            float bcy = bodyTop + bodyH / 2;
+            float cx = ClockCx, cy = ClockCy, r = ClockR;
+            var gold = new SolidBrush(Color.FromArgb(255, 196, 0));
+            var red = new SolidBrush(Color.FromArgb(229, 57, 53));
+            var redDark = new SolidBrush(Color.FromArgb(183, 28, 28));
+            var white = Brushes.White;
+            var penBody = new Pen(Color.FromArgb(183, 28, 28), 4);
+            var penFace = new Pen(Color.FromArgb(224, 224, 224), 2);
+            var legPen = new Pen(Color.FromArgb(183, 28, 28), 7) { StartCap = LineCap.Round, EndCap = LineCap.Round };
 
-            Color pink = Color.FromArgb(214, 116, 158);
-            var white = new SolidBrush(Color.White);
-            var penCat = new Pen(pink, 3.5f) { LineJoin = LineJoin.Round };
-            var earInner = new SolidBrush(Color.FromArgb(248, 200, 215));
-            var faceFill = new SolidBrush(Color.FromArgb(255, 233, 241));
-            var penFace = new Pen(pink, 3f);
-            var dark = new SolidBrush(Color.FromArgb(70, 62, 70));
+            // 兩隻腳（走路擺動）
+            float swing = (float)(Math.Sin(legPhase) * 6);
+            float ly = cy + r * 0.80f, lendY = cy + r * 1.12f;
+            float lxL = cx - r * 0.42f, lxR = cx + r * 0.42f;
+            g.DrawLine(legPen, lxL, ly, lxL - swing, lendY);
+            g.DrawLine(legPen, lxR, ly, lxR + swing, lendY);
+            g.FillEllipse(redDark, lxL - swing - 9, lendY - 4, 20, 11);
+            g.FillEllipse(redDark, lxR + swing - 11, lendY - 4, 20, 11);
 
-            float swing = (float)(Math.Sin(legPhase) * 5);
+            // 兩側鈴鐺 + 頂部按鈕
+            float rb = r * 0.52f;
+            g.FillEllipse(gold, cx - r * 0.62f - rb, cy - r * 0.95f - rb, rb * 2, rb * 2);
+            g.FillEllipse(gold, cx + r * 0.62f - rb, cy - r * 0.95f - rb, rb * 2, rb * 2);
+            g.FillEllipse(gold, cx - 6, cy - r - 12, 12, 11);
 
-            // 腳掌（走路擺動，畫在身體後方下緣）
-            g.FillEllipse(white, cx - 42 - swing, bBottom - 12, 30, 20);
-            g.DrawEllipse(penCat, cx - 42 - swing, bBottom - 12, 30, 20);
-            g.FillEllipse(white, cx + 12 + swing, bBottom - 12, 30, 20);
-            g.DrawEllipse(penCat, cx + 12 + swing, bBottom - 12, 30, 20);
+            // 鐘體
+            g.FillEllipse(red, cx - r, cy - r, r * 2, r * 2);
+            g.DrawEllipse(penBody, cx - r, cy - r, r * 2, r * 2);
+            // 白色錶面（肚子）
+            float rf = r * 0.80f;
+            g.FillEllipse(white, cx - rf, cy - rf, rf * 2, rf * 2);
+            g.DrawEllipse(penFace, cx - rf, cy - rf, rf * 2, rf * 2);
 
-            // 尾巴（右側捲起，畫在身體後方）
-            using (var tail = new GraphicsPath())
-            {
-                tail.AddBezier(cx + 55, bBottom - 34, cx + 120, bBottom - 8, cx + 128, bcy, cx + 92, bcy - 44);
-                using (var po = new Pen(pink, 17) { StartCap = LineCap.Round, EndCap = LineCap.Round })
-                using (var pf = new Pen(Color.White, 11) { StartCap = LineCap.Round, EndCap = LineCap.Round })
-                { g.DrawPath(po, tail); g.DrawPath(pf, tail); }
-            }
-
-            // 耳朵（白色三角，身體會蓋住底邊）
-            PointF[] earL = { new PointF(cx - 60, bodyTop + 20), new PointF(cx - 18, bodyTop + 6), new PointF(cx - 50, bodyTop - 26) };
-            PointF[] earR = { new PointF(cx + 60, bodyTop + 20), new PointF(cx + 18, bodyTop + 6), new PointF(cx + 50, bodyTop - 26) };
-            g.FillPolygon(white, earL); g.DrawPolygon(penCat, earL);
-            g.FillPolygon(white, earR); g.DrawPolygon(penCat, earR);
-
-            // 身體（白色橢圓）
-            g.FillEllipse(white, bLeft, bodyTop, bodyW, bodyH);
-            g.DrawEllipse(penCat, bLeft, bodyTop, bodyW, bodyH);
-
-            // 內耳
-            PointF[] inL = { new PointF(cx - 50, bodyTop + 8), new PointF(cx - 28, bodyTop), new PointF(cx - 47, bodyTop - 16) };
-            PointF[] inR = { new PointF(cx + 50, bodyTop + 8), new PointF(cx + 28, bodyTop), new PointF(cx + 47, bodyTop - 16) };
-            g.FillPolygon(earInner, inL); g.FillPolygon(earInner, inR);
-
-            // 眼睛
-            float eyeY = bodyTop + 38;
-            g.FillEllipse(dark, cx - 30, eyeY - 8, 11, 17);
-            g.FillEllipse(dark, cx + 19, eyeY - 8, 11, 17);
-            using (var hl = new SolidBrush(Color.White))
-            {
-                g.FillEllipse(hl, cx - 27, eyeY - 5, 4, 4);
-                g.FillEllipse(hl, cx + 22, eyeY - 5, 4, 4);
-            }
-
-            // 肚子上的時鐘面（放提醒文字）
-            float faceR = 46, fcx = cx, fcy = bcy + 22;
-            g.FillEllipse(faceFill, fcx - faceR, fcy - faceR, faceR * 2, faceR * 2);
-            g.DrawEllipse(penFace, fcx - faceR, fcy - faceR, faceR * 2, faceR * 2);
-
-            // 提醒文字：最多 10 字，超過以 … 替代；字級自動縮放
+            // 提醒文字放肚子中間：最多 10 字，超過以 … 替代；字級自動縮放
             string disp = message ?? "";
             if (disp.Length > 10) disp = disp.Substring(0, 10) + "…";
-            float box = faceR * 1.42f;
-            var tr = new RectangleF(fcx - box / 2, fcy - box / 2, box, box);
+            float box = rf * 1.40f;
+            var tr = new RectangleF(cx - box / 2, cy - box / 2, box, box);
             using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
-            using (var tb = new SolidBrush(Color.FromArgb(90, 50, 75)))
+            using (var tb = new SolidBrush(Color.FromArgb(40, 40, 40)))
             using (var f = FitFont(g, disp, box, box))
                 g.DrawString(disp, f, tb, tr, sf);
 
-            white.Dispose(); penCat.Dispose(); earInner.Dispose();
-            faceFill.Dispose(); penFace.Dispose(); dark.Dispose();
+            gold.Dispose(); red.Dispose(); redDark.Dispose();
+            penBody.Dispose(); penFace.Dispose(); legPen.Dispose();
         }
 
         // 由大到小挑出能塞進指定方框的字級
