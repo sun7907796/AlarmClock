@@ -1,0 +1,9 @@
+# 執行階段產生的使用者資料（不納入版控）
+alarms.txt
+settings.txt
+
+# 備份與測試暫存檔
+*.bak
+*.realbak
+_*.png
+*.tmp
