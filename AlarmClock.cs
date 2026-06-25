@@ -266,17 +266,121 @@ namespace AlarmClockApp
         private string lineToken = "";
         private string lineTo = "";
         private Button btnLine;
+        private Button btnHelp;
 
         public MainForm()
         {
             BuildUi();
             LoadAlarms();
+            NormalizeOnStartup();   // 避免開啟時立刻觸發過期的倒數鬧鐘
             RefreshList();
             LoadSettings();   // 還原暫停狀態
             StartShowListener();
             timer = new Timer { Interval = 1000 };
             timer.Tick += Timer_Tick;
             timer.Start();
+        }
+
+        // 啟動時把「已過期」的倒數鬧鐘往後重排（循環）或停用（單次），避免一開程式就立刻彈出
+        private void NormalizeOnStartup()
+        {
+            DateTime now = DateTime.Now;
+            bool changed = false;
+            foreach (var a in alarms)
+            {
+                if (a.Countdown && a.Enabled && now >= a.Target)
+                {
+                    if (a.Loop && a.IntervalSeconds > 0) a.Target = now.AddSeconds(a.IntervalSeconds);
+                    else a.Enabled = false;
+                    changed = true;
+                }
+            }
+            if (changed) SaveAlarms();
+        }
+
+        // 使用說明對話框
+        private void ShowHelpDialog()
+        {
+            using (var dlg = new Form())
+            {
+                dlg.Text = "桌面鬧鐘 - 使用說明";
+                dlg.ClientSize = new Size(520, 560);
+                dlg.FormBorderStyle = FormBorderStyle.Sizable;
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.MinimizeBox = false;
+                dlg.BackColor = FormBg;
+                dlg.Font = new Font("Microsoft JhengHei", 9.5F);
+                try { dlg.Icon = Icon; } catch { }
+
+                var txt = new TextBox
+                {
+                    Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+                    Left = 12, Top = 12, Width = 496, Height = 496,
+                    Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                    BorderStyle = BorderStyle.FixedSingle, BackColor = Color.White,
+                    Font = new Font("Microsoft JhengHei", 10.5F), Text = HelpText()
+                };
+                txt.Select(0, 0);
+                var btnClose = new Button
+                {
+                    Text = "關閉", Left = 408, Top = 518, Width = 100, Height = 30,
+                    Anchor = AnchorStyles.Bottom | AnchorStyles.Right, DialogResult = DialogResult.OK
+                };
+                dlg.Controls.Add(txt);
+                dlg.Controls.Add(btnClose);
+                dlg.AcceptButton = btnClose;
+                dlg.ShowDialog(this);
+            }
+        }
+
+        private static string HelpText()
+        {
+            return string.Join("\r\n", new[]
+            {
+                "【桌面鬧鐘 使用說明】",
+                "",
+                "■ 指定時間鬧鐘",
+                "  1) 設定「鬧鐘時間」(時:分:秒)，可按「現在」帶入目前時間。",
+                "  2) 勾「重複」後可選星期幾(不選=每天)；不勾為單次。",
+                "  3) 輸入提醒項目，按「＋ 新增鬧鐘」。",
+                "  ※ 同一時間不可重複新增。",
+                "",
+                "■ 倒數計時 / 循環",
+                "  1) 在「倒數間隔」填 分、秒。",
+                "  2) 勾「循環倒數」= 響完後每隔該時間再響(例：每30分起身)。",
+                "  3) 按「＋ 倒數新增」。",
+                "",
+                "■ 提醒項目(下拉選單)",
+                "  ‧ 可直接輸入文字。",
+                "  ‧ ＋：把目前文字加入選單；－：刪除目前選項。",
+                "",
+                "■ 響鈴音樂",
+                "  ‧ 預設使用內建鈴聲；可「瀏覽」選 wav/mp3/wma 檔。",
+                "  ‧ 「試聽」測試、「恢復預設鈴聲」還原。",
+                "",
+                "■ 動態UI停留時間",
+                "  ‧ 鬧鐘響時，時鐘角色會在螢幕下方走動，停留時間到後定點停住、再自動關閉。",
+                "  ‧ 勾「不自動關閉」則需手動關閉。",
+                "  ‧ 按「測試動態UI」可立即預覽效果。",
+                "",
+                "■ 鬧鐘清單",
+                "  ‧ 雙擊項目可載入上方表單編輯，改完按「✓ 更新」。",
+                "  ‧ 「排序」可依時間早→晚 / 晚→早排列。",
+                "  ‧ 「刪除選取」「啟用/停用」管理項目；停用或暫停中的項目顯示為灰色。",
+                "",
+                "■ 暫停所有鬧鐘",
+                "  ‧ 勾選後所有鬧鐘暫停不執行；取消勾選恢復(倒數會重新計時)。",
+                "",
+                "■ LINE 通知(選用)",
+                "  ‧ 「LINE 通知設定…」填入 Channel access token 與目標 ID。",
+                "  ‧ 目標 ID：群組為 C 開頭、個人為 U 開頭(需先把 Bot 加為好友/邀入群組)。",
+                "  ‧ 啟用後，鬧鐘響時會同步推播到 LINE(桌面彈窗照常)。",
+                "",
+                "■ 其他",
+                "  ‧ 關閉視窗會縮到右下角系統匣，仍在背景提醒；要完全結束請對系統匣圖示按右鍵→結束程式。",
+                "  ‧ 程式僅允許開啟一個，重複開啟會把既有視窗叫回前景。",
+                "  ‧ 設定與鬧鐘會自動儲存，下次開啟自動載入。"
+            });
         }
 
         // 監聽「再次啟動」訊號：有人重複開啟 exe 時，把本視窗叫回前景（即使縮在系統匣）
@@ -470,13 +574,16 @@ namespace AlarmClockApp
             lstAlarms.DoubleClick += (s, e) => { var a = lstAlarms.SelectedItem as Alarm; if (a != null) EnterEdit(a); };
             grpList.Controls.Add(lstAlarms);
 
-            btnDelete = new Button { Text = "刪除選取", Left = 12, Top = 194, Width = 110, Height = 34 };
+            btnDelete = new Button { Text = "刪除選取", Left = 12, Top = 194, Width = 96, Height = 34 };
             btnDelete.Click += (s, e) => DeleteSelected();
-            btnToggle = new Button { Text = "啟用/停用", Left = 130, Top = 194, Width = 110, Height = 34 };
+            btnToggle = new Button { Text = "啟用/停用", Left = 114, Top = 194, Width = 96, Height = 34 };
             btnToggle.Click += (s, e) => ToggleSelected();
+            btnHelp = new Button { Text = "使用說明", Left = 216, Top = 194, Width = 96, Height = 34 };
+            btnHelp.Click += (s, e) => ShowHelpDialog();
+            grpList.Controls.Add(btnHelp);
             chkMasterStop = new CheckBox
             {
-                Text = "⏸ 暫停所有鬧鐘", Left = 256, Top = 194, Width = 256, Height = 34,
+                Text = "⏸ 暫停所有鬧鐘", Left = 318, Top = 194, Width = 194, Height = 34,
                 Font = new Font("Microsoft JhengHei", 10F, FontStyle.Bold),
                 Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
                 FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = Color.Firebrick,
@@ -512,7 +619,7 @@ namespace AlarmClockApp
             // 統一按鈕樣式
             StyleButton(btnAdd, true);
             StyleButton(btnCountdown, true);
-            foreach (var b in new[] { btnNow, btnBrowse, btnTest, btnClearSound, btnTestPopup, btnDelete, btnToggle, btnAddPreset, btnDelPreset, btnLine })
+            foreach (var b in new[] { btnNow, btnBrowse, btnTest, btnClearSound, btnTestPopup, btnDelete, btnToggle, btnAddPreset, btnDelPreset, btnLine, btnHelp })
                 StyleButton(b, false);
 
             tray = new NotifyIcon
