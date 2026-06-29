@@ -255,7 +255,8 @@ namespace AlarmClockApp
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.txt");
         private readonly string remindersPath =
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "reminders.txt");
-        private GroupBox grpAdd;
+        private GroupBox grpClock;
+        private GroupBox grpCountdown;
         private Button btnAddPreset;
         private Button btnDelPreset;
         private Alarm editing;   // 正在編輯的鬧鐘（null = 新增模式）
@@ -414,7 +415,7 @@ namespace AlarmClockApp
         private void BuildUi()
         {
             Text = "桌面鬧鐘";
-            ClientSize = new Size(548, 632);
+            ClientSize = new Size(548, 718);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -442,17 +443,69 @@ namespace AlarmClockApp
             header.Controls.Add(lblTitle);
             header.Controls.Add(lblClock);
 
-            // ── 新增鬧鐘 群組 ──
-            grpAdd = new GroupBox
+            var normal = new Font("Microsoft JhengHei", 9F);
+
+            // ── 共用設定（提醒內容 / 鈴聲 / 停留時間）──
+            var grpCommon = new GroupBox
             {
-                Text = "新增鬧鐘", Left = 12, Top = 66, Width = 524, Height = 300,
+                Text = "提醒內容與鈴聲（共用）", Left = 12, Top = 66, Width = 524, Height = 152,
                 BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
                 ForeColor = Accent
             };
-            var normal = new Font("Microsoft JhengHei", 9F);
+            // 提醒項目（下拉，可自行輸入）
+            grpCommon.Controls.Add(new Label { Text = "提醒項目：", Left = 12, Top = 28, Width = 76, Font = normal, ForeColor = Color.Black });
+            cboReminder = new ComboBox { Left = 90, Top = 25, Width = 352, DropDownStyle = ComboBoxStyle.DropDown, Font = normal };
+            LoadReminders();   // 從 reminders.txt 載入選項（無檔時用預設並建立）
+            btnAddPreset = new Button { Text = "＋", Left = 446, Top = 24, Width = 28, Height = 26 };
+            btnAddPreset.Click += (s, e) => AddPreset();
+            btnDelPreset = new Button { Text = "－", Left = 478, Top = 24, Width = 28, Height = 26 };
+            btnDelPreset.Click += (s, e) => DeletePreset();
+            grpCommon.Controls.Add(cboReminder);
+            grpCommon.Controls.Add(btnAddPreset);
+            grpCommon.Controls.Add(btnDelPreset);
+            // 響鈴音樂
+            grpCommon.Controls.Add(new Label { Text = "響鈴音樂：", Left = 12, Top = 60, Width = 76, Font = normal, ForeColor = Color.Black });
+            soundPath = File.Exists(DefaultSoundFile) ? DefaultSoundFile : "";
+            txtSound = new TextBox { Left = 90, Top = 57, Width = 330, ReadOnly = true, Text = SoundLabel(), Font = normal };
+            btnBrowse = new Button { Text = "瀏覽…", Left = 426, Top = 55, Width = 80, Height = 26 };
+            btnBrowse.Click += (s, e) => BrowseSound();
+            grpCommon.Controls.Add(txtSound);
+            grpCommon.Controls.Add(btnBrowse);
+            // 音樂相關 + 測試動態
+            btnTest = new Button { Text = "試聽", Left = 90, Top = 88, Width = 88, Height = 26 };
+            btnTest.Click += (s, e) => TestSound();
+            btnClearSound = new Button { Text = "恢復預設鈴聲", Left = 184, Top = 88, Width = 110, Height = 26 };
+            btnClearSound.Click += (s, e) =>
+            {
+                soundPath = File.Exists(DefaultSoundFile) ? DefaultSoundFile : "";
+                txtSound.Text = SoundLabel(); StopTest();
+            };
+            btnTestPopup = new Button { Text = "測試動態UI", Left = 300, Top = 88, Width = 96, Height = 26 };
+            btnTestPopup.Click += (s, e) =>
+                new AlarmPopup(CurrentText(), DateTime.Now.ToString("HH:mm:ss"), soundPath, CurrentStaySeconds()).Show();
+            grpCommon.Controls.Add(btnTest);
+            grpCommon.Controls.Add(btnClearSound);
+            grpCommon.Controls.Add(btnTestPopup);
+            // 動態UI停留時間
+            grpCommon.Controls.Add(new Label { Text = "停留時間：", Left = 12, Top = 122, Width = 76, Font = normal, ForeColor = Color.Black });
+            numStay = new NumericUpDown { Left = 90, Top = 119, Width = 56, Minimum = 1, Maximum = 999, Value = 3, Font = normal };
+            cboStayUnit = new ComboBox { Left = 150, Top = 119, Width = 56, DropDownStyle = ComboBoxStyle.DropDownList, Font = normal };
+            cboStayUnit.Items.AddRange(new object[] { "分", "秒" });
+            cboStayUnit.SelectedIndex = 0;
+            chkNoAuto = new CheckBox { Text = "不自動關閉（手動）", Left = 214, Top = 121, Width = 180, Font = normal, ForeColor = Color.Black };
+            chkNoAuto.CheckedChanged += (s, e) => { numStay.Enabled = !chkNoAuto.Checked; cboStayUnit.Enabled = !chkNoAuto.Checked; };
+            grpCommon.Controls.Add(numStay);
+            grpCommon.Controls.Add(cboStayUnit);
+            grpCommon.Controls.Add(chkNoAuto);
 
-            // 鬧鐘時間 + 現在
-            grpAdd.Controls.Add(new Label { Text = "鬧鐘時間：", Left = 12, Top = 28, Width = 76, Font = normal, ForeColor = Color.Black });
+            // ── 指定時間鬧鐘 ──
+            grpClock = new GroupBox
+            {
+                Text = "指定時間鬧鐘", Left = 12, Top = 226, Width = 524, Height = 122,
+                BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
+                ForeColor = Accent
+            };
+            grpClock.Controls.Add(new Label { Text = "鬧鐘時間：", Left = 12, Top = 28, Width = 76, Font = normal, ForeColor = Color.Black });
             timePicker = new DateTimePicker
             {
                 Left = 90, Top = 25, Width = 100, Font = normal,
@@ -460,14 +513,12 @@ namespace AlarmClockApp
             };
             btnNow = new Button { Text = "現在時間", Left = 196, Top = 24, Width = 60, Height = 26 };
             btnNow.Click += (s, e) => timePicker.Value = DateTime.Now;
-            chkRepeat = new CheckBox { Text = "重複", Left = 258, Top = 27, Width = 56, Font = normal, ForeColor = Color.Black };
+            chkRepeat = new CheckBox { Text = "重複", Left = 262, Top = 27, Width = 56, Font = normal, ForeColor = Color.Black };
             chkRepeat.CheckedChanged += (s, e) => UpdateDayBoxes();
-            grpAdd.Controls.Add(timePicker);
-            grpAdd.Controls.Add(btnNow);
-            grpAdd.Controls.Add(chkRepeat);
-
-            // 星期幾
-            grpAdd.Controls.Add(new Label { Text = "重複星期：", Left = 12, Top = 58, Width = 76, Font = normal, ForeColor = Color.Black });
+            grpClock.Controls.Add(timePicker);
+            grpClock.Controls.Add(btnNow);
+            grpClock.Controls.Add(chkRepeat);
+            grpClock.Controls.Add(new Label { Text = "重複星期：", Left = 12, Top = 58, Width = 76, Font = normal, ForeColor = Color.Black });
             for (int i = 0; i < 7; i++)
             {
                 chkDays[i] = new CheckBox
@@ -475,81 +526,46 @@ namespace AlarmClockApp
                     Text = new[] { "日", "一", "二", "三", "四", "五", "六" }[i],
                     Left = 90 + i * 60, Top = 57, Width = 56, Font = normal, ForeColor = Color.Black, Enabled = false
                 };
-                grpAdd.Controls.Add(chkDays[i]);
+                grpClock.Controls.Add(chkDays[i]);
             }
-
-            // 倒數間隔
-            grpAdd.Controls.Add(new Label { Text = "倒數間隔：", Left = 12, Top = 92, Width = 76, Font = normal, ForeColor = Color.Black });
-            numCdMin = new NumericUpDown { Left = 90, Top = 89, Width = 46, Minimum = 0, Maximum = 1440, Value = 30, Font = normal };
-            grpAdd.Controls.Add(new Label { Text = "分", Left = 138, Top = 92, Width = 16, Font = normal, ForeColor = Color.Black });
-            numCdSec = new NumericUpDown { Left = 156, Top = 89, Width = 46, Minimum = 0, Maximum = 59, Value = 0, Font = normal };
-            grpAdd.Controls.Add(new Label { Text = "秒", Left = 204, Top = 92, Width = 16, Font = normal, ForeColor = Color.Black });
-            chkLoop = new CheckBox { Text = "循環倒數", Left = 226, Top = 91, Width = 90, Font = normal, ForeColor = Color.Black };
-            grpAdd.Controls.Add(numCdMin);
-            grpAdd.Controls.Add(numCdSec);
-            grpAdd.Controls.Add(chkLoop);
-
-            // 停留時間
-            grpAdd.Controls.Add(new Label { Text = "動態UI停留時間：", Left = 12, Top = 124, Width = 76, Font = normal, ForeColor = Color.Black });
-            numStay = new NumericUpDown { Left = 90, Top = 121, Width = 60, Minimum = 1, Maximum = 999, Value = 3, Font = normal };
-            cboStayUnit = new ComboBox { Left = 156, Top = 121, Width = 56, DropDownStyle = ComboBoxStyle.DropDownList, Font = normal };
-            cboStayUnit.Items.AddRange(new object[] { "分", "秒" });
-            cboStayUnit.SelectedIndex = 0;
-            chkNoAuto = new CheckBox { Text = "不自動關閉（手動）", Left = 220, Top = 123, Width = 170, Font = normal, ForeColor = Color.Black };
-            chkNoAuto.CheckedChanged += (s, e) => { numStay.Enabled = !chkNoAuto.Checked; cboStayUnit.Enabled = !chkNoAuto.Checked; };
-            grpAdd.Controls.Add(numStay);
-            grpAdd.Controls.Add(cboStayUnit);
-            grpAdd.Controls.Add(chkNoAuto);
-
-            // 提醒項目（下拉，可自行輸入）
-            grpAdd.Controls.Add(new Label { Text = "提醒項目：", Left = 12, Top = 156, Width = 76, Font = normal, ForeColor = Color.Black });
-            cboReminder = new ComboBox { Left = 90, Top = 153, Width = 352, DropDownStyle = ComboBoxStyle.DropDown, Font = normal };
-            LoadReminders();   // 從 reminders.txt 載入選項（無檔時用預設並建立）
-            btnAddPreset = new Button { Text = "＋", Left = 446, Top = 152, Width = 28, Height = 26 };
-            btnAddPreset.Click += (s, e) => AddPreset();
-            btnDelPreset = new Button { Text = "－", Left = 478, Top = 152, Width = 28, Height = 26 };
-            btnDelPreset.Click += (s, e) => DeletePreset();
-            grpAdd.Controls.Add(cboReminder);
-            grpAdd.Controls.Add(btnAddPreset);
-            grpAdd.Controls.Add(btnDelPreset);
-
-            // 響鈴音樂
-            grpAdd.Controls.Add(new Label { Text = "響鈴音樂：", Left = 12, Top = 188, Width = 76, Font = normal, ForeColor = Color.Black });
-            soundPath = File.Exists(DefaultSoundFile) ? DefaultSoundFile : "";
-            txtSound = new TextBox { Left = 90, Top = 185, Width = 330, ReadOnly = true, Text = SoundLabel(), Font = normal };
-            btnBrowse = new Button { Text = "瀏覽…", Left = 426, Top = 183, Width = 80, Height = 26 };
-            btnBrowse.Click += (s, e) => BrowseSound();
-            grpAdd.Controls.Add(txtSound);
-            grpAdd.Controls.Add(btnBrowse);
-
-            // 音樂相關按鈕
-            btnTest = new Button { Text = "試聽", Left = 90, Top = 216, Width = 88, Height = 26 };
-            btnTest.Click += (s, e) => TestSound();
-            btnClearSound = new Button { Text = "恢復預設鈴聲", Left = 184, Top = 216, Width = 110, Height = 26 };
-            btnClearSound.Click += (s, e) =>
+            btnAdd = new Button { Text = "＋ 新增鬧鐘", Left = 90, Top = 86, Width = 416, Height = 30 };
+            btnAdd.Click += (s, e) =>
             {
-                soundPath = File.Exists(DefaultSoundFile) ? DefaultSoundFile : "";
-                txtSound.Text = SoundLabel(); StopTest();
+                if (editing == null) AddClockAlarm();
+                else if (editing.Countdown) ExitEdit();   // 編輯倒數時此鈕為「取消編輯」
+                else UpdateEditing();                       // 編輯時鐘時此鈕為「✓ 更新」
             };
-            btnTestPopup = new Button { Text = "測試動態UI", Left = 300, Top = 216, Width = 90, Height = 26 };
-            btnTestPopup.Click += (s, e) =>
-                new AlarmPopup(CurrentText(), DateTime.Now.ToString("HH:mm:ss"), soundPath, CurrentStaySeconds()).Show();
-            grpAdd.Controls.Add(btnTest);
-            grpAdd.Controls.Add(btnClearSound);
-            grpAdd.Controls.Add(btnTestPopup);
+            grpClock.Controls.Add(btnAdd);
 
-            // 主要新增按鈕
-            btnAdd = new Button { Text = "＋ 新增鬧鐘", Left = 90, Top = 254, Width = 200, Height = 34 };
-            btnAdd.Click += (s, e) => { if (editing != null) UpdateEditing(); else AddClockAlarm(); };
-            btnCountdown = new Button { Text = "＋ 倒數新增", Left = 296, Top = 254, Width = 210, Height = 34 };
-            btnCountdown.Click += (s, e) => { if (editing != null) ExitEdit(); else AddCountdownAlarm(); };
-            grpAdd.Controls.Add(btnAdd);
-            grpAdd.Controls.Add(btnCountdown);
+            // ── 倒數計時 ──
+            grpCountdown = new GroupBox
+            {
+                Text = "倒數計時", Left = 12, Top = 356, Width = 524, Height = 94,
+                BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
+                ForeColor = Accent
+            };
+            grpCountdown.Controls.Add(new Label { Text = "倒數間隔：", Left = 12, Top = 28, Width = 76, Font = normal, ForeColor = Color.Black });
+            numCdMin = new NumericUpDown { Left = 90, Top = 25, Width = 46, Minimum = 0, Maximum = 1440, Value = 30, Font = normal };
+            grpCountdown.Controls.Add(new Label { Text = "分", Left = 138, Top = 28, Width = 16, Font = normal, ForeColor = Color.Black });
+            numCdSec = new NumericUpDown { Left = 156, Top = 25, Width = 46, Minimum = 0, Maximum = 59, Value = 0, Font = normal };
+            grpCountdown.Controls.Add(new Label { Text = "秒", Left = 204, Top = 28, Width = 16, Font = normal, ForeColor = Color.Black });
+            chkLoop = new CheckBox { Text = "循環倒數", Left = 226, Top = 27, Width = 100, Font = normal, ForeColor = Color.Black };
+            grpCountdown.Controls.Add(numCdMin);
+            grpCountdown.Controls.Add(numCdSec);
+            grpCountdown.Controls.Add(chkLoop);
+            btnCountdown = new Button { Text = "＋ 倒數新增", Left = 90, Top = 56, Width = 416, Height = 30 };
+            btnCountdown.Click += (s, e) =>
+            {
+                if (editing == null) AddCountdownAlarm();
+                else if (editing.Countdown) UpdateEditing();   // 編輯倒數時此鈕為「✓ 更新」
+                else ExitEdit();                                // 編輯時鐘時此鈕為「取消編輯」
+            };
+            grpCountdown.Controls.Add(btnCountdown);
 
             // ── 鬧鐘清單 群組 ──
             var grpList = new GroupBox
             {
-                Text = "鬧鐘清單", Left = 12, Top = 372, Width = 524, Height = 252,
+                Text = "鬧鐘清單", Left = 12, Top = 458, Width = 524, Height = 252,
                 BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
                 ForeColor = Accent
             };
@@ -612,7 +628,9 @@ namespace AlarmClockApp
             grpList.Controls.Add(btnToggle);
             grpList.Controls.Add(chkMasterStop);
 
-            Controls.Add(grpAdd);
+            Controls.Add(grpCommon);
+            Controls.Add(grpClock);
+            Controls.Add(grpCountdown);
             Controls.Add(grpList);
             Controls.Add(header);
 
@@ -775,9 +793,17 @@ namespace AlarmClockApp
                 for (int i = 0; i < 7; i++) chkDays[i].Checked = a.Repeat && (a.Days & (1 << i)) != 0;
             }
 
-            btnAdd.Text = "✓ 更新";
-            btnCountdown.Text = "✗ 取消編輯";
-            grpAdd.Text = a.Countdown ? "編輯鬧鐘（倒數）" : "編輯鬧鐘";
+            // 「✓ 更新」放在被編輯項目對應的群組按鈕，另一個群組按鈕當「取消編輯」
+            if (a.Countdown)
+            {
+                btnCountdown.Text = "✓ 更新"; btnAdd.Text = "✗ 取消編輯";
+                grpCountdown.Text = "編輯倒數鬧鐘"; grpClock.Text = "指定時間鬧鐘";
+            }
+            else
+            {
+                btnAdd.Text = "✓ 更新"; btnCountdown.Text = "✗ 取消編輯";
+                grpClock.Text = "編輯鬧鐘"; grpCountdown.Text = "倒數計時";
+            }
         }
 
         private void ExitEdit()
@@ -785,7 +811,8 @@ namespace AlarmClockApp
             editing = null;
             btnAdd.Text = "＋ 新增鬧鐘";
             btnCountdown.Text = "＋ 倒數新增";
-            grpAdd.Text = "新增鬧鐘";
+            grpClock.Text = "指定時間鬧鐘";
+            grpCountdown.Text = "倒數計時";
         }
 
         private void UpdateEditing()
