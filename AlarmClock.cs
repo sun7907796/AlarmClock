@@ -1298,7 +1298,7 @@ namespace AlarmClockApp
         private Timer animTimer;
         private int elapsedMs = 0;
         private int lastSec = -1;
-        private int dx = 2;            // 水平速度（像素/幀，較慢）
+        private int dx = 1;            // 水平速度（像素/幀，放慢以避免提示框殘影）
         private bool moving = true;
         private double legPhase = 0;   // 走路擺腳相位
 
@@ -1363,9 +1363,9 @@ namespace AlarmClockApp
             // 分層視窗無子控制項，改用座標判斷點擊（按鈕僅在停住顯示後才生效）
             MouseDown += (s, e) =>
             {
-                if (!moving && btnSnoozeRect.Contains(e.Location)) { Snooze(); Close(); }
-                else if (!moving && btnOkRect.Contains(e.Location)) { Close(); }
-                else if (e.Y > bubbleRect.Bottom) { Close(); }   // 點鬧鐘本體也可關閉
+                if (btnSnoozeRect.Contains(e.Location)) { Snooze(); Close(); }
+                else if (btnOkRect.Contains(e.Location)) { Close(); }
+                else if (e.Y > bubbleRect.Bottom) { Close(); }   // 點角色本體也可關閉
             };
 
             Shown += (s, e) =>
@@ -1400,14 +1400,11 @@ namespace AlarmClockApp
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-                if (!moving) DrawBubble(g);          // 停駐後才顯示對話框（畫在角色後面）
+                DrawBubble(g);                       // 對話框永久顯示（走動時也在）
                 if (charImage != null) DrawImageChar(g);
                 else DrawClock(g);
-                if (!moving)                          // 停駐後才顯示按鈕
-                {
-                    DrawButton(g, btnSnoozeRect, "稍後 5 分");
-                    DrawButton(g, btnOkRect, "我知道了");
-                }
+                DrawButton(g, btnSnoozeRect, "稍後 5 分");
+                DrawButton(g, btnOkRect, "我知道了");
             }
             SetBitmap(canvas, winX, winY);
         }
@@ -1649,7 +1646,7 @@ namespace AlarmClockApp
                     if (nx <= wa.Left) { nx = wa.Left; dx = Math.Abs(dx); }
                     else if (nx + Width >= wa.Right) { nx = wa.Right - Width; dx = -Math.Abs(dx); }
                     winX = nx;
-                    legPhase += 0.18;
+                    legPhase += 0.10;
                     if (elapsedMs >= moveDurationMs) { moving = false; legPhase = 0; } // 定點停住
                     Render();   // 更新位置與擺腳
                 }
