@@ -506,9 +506,9 @@ namespace AlarmClockApp
             // 動態UI圖片（自訂角色圖；空=預設時鐘造型）
             grpCommon.Controls.Add(new Label { Text = "動態圖片：", Left = 12, Top = 154, Width = 76, Font = normal, ForeColor = Color.Black });
             txtUiImage = new TextBox { Left = 90, Top = 151, Width = 218, ReadOnly = true, Text = UiImageLabel(), Font = normal };
-            btnUiImage = new Button { Text = "瀏覽…", Left = 312, Top = 150, Width = 60, Height = 26 };
+            btnUiImage = new Button { Text = "瀏覽…", Left = 312, Top = 150, Width = 100, Height = 26 };
             btnUiImage.Click += (s, e) => BrowseUiImage();
-            btnUiReset = new Button { Text = "預設", Left = 442, Top = 150, Width = 64, Height = 26 };
+            btnUiReset = new Button { Text = "預設", Left = 417, Top = 150, Width = 100, Height = 26 };
             btnUiReset.Click += (s, e) => { uiImagePath = ""; txtUiImage.Text = UiImageLabel(); SaveSettings(); };
             grpCommon.Controls.Add(txtUiImage);
             grpCommon.Controls.Add(btnUiImage);
