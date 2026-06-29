@@ -505,10 +505,10 @@ namespace AlarmClockApp
             grpCommon.Controls.Add(chkNoAuto);
             // 動態UI圖片（自訂角色圖；空=預設時鐘造型）
             grpCommon.Controls.Add(new Label { Text = "動態圖片：", Left = 12, Top = 154, Width = 76, Font = normal, ForeColor = Color.Black });
-            txtUiImage = new TextBox { Left = 90, Top = 151, Width = 276, ReadOnly = true, Text = UiImageLabel(), Font = normal };
-            btnUiImage = new Button { Text = "瀏覽…", Left = 372, Top = 150, Width = 64, Height = 26 };
+            txtUiImage = new TextBox { Left = 90, Top = 151, Width = 218, ReadOnly = true, Text = UiImageLabel(), Font = normal };
+            btnUiImage = new Button { Text = "瀏覽…", Left = 312, Top = 150, Width = 60, Height = 26 };
             btnUiImage.Click += (s, e) => BrowseUiImage();
-            btnUiReset = new Button { Text = "用預設", Left = 442, Top = 150, Width = 64, Height = 26 };
+            btnUiReset = new Button { Text = "預設", Left = 442, Top = 150, Width = 64, Height = 26 };
             btnUiReset.Click += (s, e) => { uiImagePath = ""; txtUiImage.Text = UiImageLabel(); SaveSettings(); };
             grpCommon.Controls.Add(txtUiImage);
             grpCommon.Controls.Add(btnUiImage);
@@ -1316,6 +1316,10 @@ namespace AlarmClockApp
         private bool soundStopped;
         private readonly string imagePath;
         private Image charImage;      // 自訂角色圖（null=用預設時鐘造型）
+        private Bitmap[] spriteFrames;// 來自橫向 sprite 圖檔的多幀（快取共用，不在此釋放）
+        private bool showMsgInBubble; // 角色無肚子可放字時，文字改放泡泡
+        private static readonly System.Collections.Generic.Dictionary<string, Bitmap[]> spriteCache
+            = new System.Collections.Generic.Dictionary<string, Bitmap[]>();
 
         // 版面
         private Rectangle bubbleRect = new Rectangle(12, 8, 416, 76);
@@ -1336,12 +1340,17 @@ namespace AlarmClockApp
             this.imagePath = imagePath;
             if (!string.IsNullOrEmpty(imagePath) && File.Exists(imagePath))
             {
-                try { using (var tmp = Image.FromFile(imagePath)) charImage = new Bitmap(tmp); }
-                catch { charImage = null; }
+                spriteFrames = LoadSpriteFrames(imagePath);   // 橫向多格 sprite → 多幀動畫
+                if (spriteFrames == null)
+                {
+                    try { using (var tmp = Image.FromFile(imagePath)) charImage = new Bitmap(tmp); }
+                    catch { charImage = null; }
+                }
             }
-            if (charImage != null)
+            showMsgInBubble = (charImage != null) || spriteFrames != null;
+            if (showMsgInBubble)
             {
-                // 自訂圖片無「肚子」放字：泡泡加高以容納 時間 + 提醒文字 + 按鈕
+                // 角色無「肚子」放字：泡泡加高以容納 時間 + 提醒文字 + 按鈕
                 bubbleRect = new Rectangle(12, 8, 416, 100);
                 btnSnoozeRect = new Rectangle(112, 74, 100, 24);
                 btnOkRect = new Rectangle(228, 74, 100, 24);
@@ -1401,7 +1410,8 @@ namespace AlarmClockApp
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
                 DrawBubble(g);                       // 對話框永久顯示（走動時也在）
-                if (charImage != null) DrawImageChar(g);
+                if (spriteFrames != null) DrawSprite(g);
+                else if (charImage != null) DrawImageChar(g);
                 else DrawClock(g);
                 DrawButton(g, btnSnoozeRect, "稍後 5 分");
                 DrawButton(g, btnOkRect, "我知道了");
@@ -1471,33 +1481,19 @@ namespace AlarmClockApp
         {
             using (var path = RoundRect(bubbleRect, 16))
             using (var fill = new SolidBrush(Color.White))
-            using (var border = new Pen(Color.Black, 4))   // 黑色粗框強調
+            using (var border = new Pen(Color.Black, 4))   // 黑色粗框；無尖角
             {
                 g.FillPath(fill, path);
                 g.DrawPath(border, path);
-                // 白底三角覆蓋泡泡底框的缺口，使尖角與泡泡連成一體
-                g.FillPolygon(fill, new Point[]
-                {
-                    new Point(ClockCx - 16, bubbleRect.Bottom - 5),
-                    new Point(ClockCx + 16, bubbleRect.Bottom - 5),
-                    new Point(ClockCx, bubbleRect.Bottom + 16)
-                });
-                // 黑粗線只描尖角兩條外緣
-                g.DrawLines(border, new Point[]
-                {
-                    new Point(ClockCx - 14, bubbleRect.Bottom - 1),
-                    new Point(ClockCx, bubbleRect.Bottom + 16),
-                    new Point(ClockCx + 14, bubbleRect.Bottom - 1)
-                });
             }
 
             using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
             using (var bTime = new SolidBrush(Color.Firebrick))
             using (var bMsg = new SolidBrush(Color.FromArgb(40, 40, 40)))
             {
-                if (charImage != null)
+                if (showMsgInBubble)
                 {
-                    // 自訂圖片無「肚子」可放字：時間 + 提醒文字都放泡泡
+                    // 角色無「肚子」可放字：時間 + 提醒文字都放泡泡
                     using (var fTime = new Font("Consolas", 19F, FontStyle.Bold))
                     using (var fMsg = new Font("Microsoft JhengHei", 12F, FontStyle.Bold))
                     {
@@ -1522,15 +1518,113 @@ namespace AlarmClockApp
         // 畫自訂角色圖：等比例縮放置中，走動時上下擺動
         private void DrawImageChar(Graphics g)
         {
-            const float maxW = 184f, maxH = 162f;
+            const float maxW = 184f, maxH = 156f;
             float iw = charImage.Width, ih = charImage.Height;
             float scale = Math.Min(maxW / iw, maxH / ih);
             float dw = iw * scale, dh = ih * scale;
             float bob = moving ? -(float)Math.Abs(Math.Sin(legPhase)) * 6f : 0f;
             float dxp = ClockCx - dw / 2f;
-            float dyp = 208f - dh / 2f + bob;   // 置於泡泡下方區域中央
+            float dyp = 272f - dh + bob;   // 腳底貼齊基準，整體位於對話框下方
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
             g.DrawImage(charImage, dxp, dyp, dw, dh);
+        }
+
+        // 橫向 sprite 多幀動畫（依移動方向左右翻面，最近鄰放大保留像素感）
+        private void DrawSprite(Graphics g)
+        {
+            int n = spriteFrames.Length;
+            int idx = moving ? (int)(elapsedMs / 130) % n : 0;
+            int mw = 0, mh = 0;
+            foreach (var f in spriteFrames) { if (f.Width > mw) mw = f.Width; if (f.Height > mh) mh = f.Height; }
+            float scale = Math.Min(190f / mw, 156f / mh);
+            Bitmap bmp = spriteFrames[idx];
+            float dw = bmp.Width * scale, dh = bmp.Height * scale;
+            float bob = moving ? -(float)Math.Abs(Math.Sin(legPhase)) * 4f : 0f;
+            float dxp = ClockCx - dw / 2f;
+            float dyp = 272f - dh + bob;   // 腳底貼齊基準，整體位於對話框下方
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            g.PixelOffsetMode = PixelOffsetMode.Half;
+            if (dx < 0)   // 往左走 → 翻面
+            {
+                var st = g.Save();
+                g.TranslateTransform(ClockCx, 0); g.ScaleTransform(-1, 1); g.TranslateTransform(-ClockCx, 0);
+                g.DrawImage(bmp, dxp, dyp, dw, dh);
+                g.Restore(st);
+            }
+            else g.DrawImage(bmp, dxp, dyp, dw, dh);
+            g.PixelOffsetMode = PixelOffsetMode.Default;
+        }
+
+        private static Bitmap[] LoadSpriteFrames(string path)
+        {
+            lock (spriteCache)
+            {
+                Bitmap[] c;
+                if (spriteCache.TryGetValue(path, out c)) return c;
+            }
+            Bitmap[] fr = BuildSpriteFrames(path);
+            lock (spriteCache) { spriteCache[path] = fr; }
+            return fr;
+        }
+
+        // 把橫向並排的 sprite 圖（透明分隔）自動切成多幀；非寬橫向圖回傳 null
+        private static Bitmap[] BuildSpriteFrames(string path)
+        {
+            Bitmap src;
+            try
+            {
+                using (var tmp = Image.FromFile(path))
+                {
+                    src = new Bitmap(tmp.Width, tmp.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                    using (var g = Graphics.FromImage(src)) { g.Clear(Color.Transparent); g.DrawImage(tmp, 0, 0, tmp.Width, tmp.Height); }
+                }
+            }
+            catch { return null; }
+
+            int w = src.Width, h = src.Height;
+            if (w < h * 1.4) { src.Dispose(); return null; }   // 非寬橫向圖：當單張處理
+
+            int[] px = new int[w * h];
+            var bd = src.LockBits(new Rectangle(0, 0, w, h),
+                System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            System.Runtime.InteropServices.Marshal.Copy(bd.Scan0, px, 0, px.Length);
+            src.UnlockBits(bd);
+
+            bool[] colHas = new bool[w];
+            for (int y = 0; y < h; y++)
+            {
+                int row = y * w;
+                for (int x = 0; x < w; x++)
+                    if (((px[row + x] >> 24) & 0xFF) > 16) colHas[x] = true;
+            }
+            var ranges = new System.Collections.Generic.List<int[]>();
+            int sx = -1;
+            for (int x = 0; x < w; x++)
+            {
+                if (colHas[x]) { if (sx < 0) sx = x; }
+                else if (sx >= 0) { ranges.Add(new[] { sx, x - 1 }); sx = -1; }
+            }
+            if (sx >= 0) ranges.Add(new[] { sx, w - 1 });
+
+            var frames = new System.Collections.Generic.List<Bitmap>();
+            foreach (var rg in ranges)
+            {
+                int x0 = rg[0], x1 = rg[1];
+                if (x1 - x0 < 20) continue;   // 過濾雜訊
+                int minY = h, maxY = -1;
+                for (int y = 0; y < h; y++)
+                {
+                    int row = y * w; bool any = false;
+                    for (int x = x0; x <= x1; x++) if (((px[row + x] >> 24) & 0xFF) > 16) { any = true; break; }
+                    if (any) { if (y < minY) minY = y; if (y > maxY) maxY = y; }
+                }
+                if (maxY < minY) continue;
+                frames.Add(src.Clone(new Rectangle(x0, minY, x1 - x0 + 1, maxY - minY + 1),
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb));
+            }
+            src.Dispose();
+            if (frames.Count < 2) { foreach (var f in frames) f.Dispose(); return null; }
+            return frames.ToArray();
         }
 
         // 時鐘造型：紅色鐘體 + 金色鈴鐺，肚子（白色錶面）放提醒文字（無眼睛、無指針）
