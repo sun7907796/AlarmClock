@@ -1586,8 +1586,12 @@ namespace AlarmClockApp
 
             int[] px = new int[w * h];
             var bd = src.LockBits(new Rectangle(0, 0, w, h),
-                System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                System.Drawing.Imaging.ImageLockMode.ReadWrite, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
             System.Runtime.InteropServices.Marshal.Copy(bd.Scan0, px, 0, px.Length);
+            // 半透明背景（含淡灰霧）一律清成全透明：alpha < 128 視為背景
+            for (int i = 0; i < px.Length; i++)
+                if (((px[i] >> 24) & 0xFF) < 128) px[i] = 0;
+            System.Runtime.InteropServices.Marshal.Copy(px, 0, bd.Scan0, px.Length);
             src.UnlockBits(bd);
 
             bool[] colHas = new bool[w];
@@ -1595,7 +1599,7 @@ namespace AlarmClockApp
             {
                 int row = y * w;
                 for (int x = 0; x < w; x++)
-                    if (((px[row + x] >> 24) & 0xFF) > 16) colHas[x] = true;
+                    if (((px[row + x] >> 24) & 0xFF) != 0) colHas[x] = true;
             }
             var ranges = new System.Collections.Generic.List<int[]>();
             int sx = -1;
@@ -1615,7 +1619,7 @@ namespace AlarmClockApp
                 for (int y = 0; y < h; y++)
                 {
                     int row = y * w; bool any = false;
-                    for (int x = x0; x <= x1; x++) if (((px[row + x] >> 24) & 0xFF) > 16) { any = true; break; }
+                    for (int x = x0; x <= x1; x++) if (((px[row + x] >> 24) & 0xFF) != 0) { any = true; break; }
                     if (any) { if (y < minY) minY = y; if (y > maxY) maxY = y; }
                 }
                 if (maxY < minY) continue;
