@@ -267,6 +267,12 @@ namespace AlarmClockApp
         private string lineToken = "";
         private string lineTo = "";
         private Button btnLine;
+
+        // 動態UI自訂圖片（空=用預設時鐘造型）
+        private string uiImagePath = "";
+        private TextBox txtUiImage;
+        private Button btnUiImage;
+        private Button btnUiReset;
         private Button btnHelp;
 
         public MainForm()
@@ -415,7 +421,7 @@ namespace AlarmClockApp
         private void BuildUi()
         {
             Text = "桌面鬧鐘";
-            ClientSize = new Size(548, 718);
+            ClientSize = new Size(548, 750);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -448,7 +454,7 @@ namespace AlarmClockApp
             // ── 共用設定（提醒內容 / 鈴聲 / 停留時間）──
             var grpCommon = new GroupBox
             {
-                Text = "提醒內容與鈴聲（共用）", Left = 12, Top = 66, Width = 524, Height = 152,
+                Text = "提醒內容與鈴聲（共用）", Left = 12, Top = 66, Width = 524, Height = 184,
                 BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
                 ForeColor = Accent
             };
@@ -482,7 +488,7 @@ namespace AlarmClockApp
             };
             btnTestPopup = new Button { Text = "測試動態UI", Left = 300, Top = 88, Width = 96, Height = 26 };
             btnTestPopup.Click += (s, e) =>
-                new AlarmPopup(CurrentText(), DateTime.Now.ToString("HH:mm:ss"), soundPath, CurrentStaySeconds()).Show();
+                new AlarmPopup(CurrentText(), DateTime.Now.ToString("HH:mm:ss"), soundPath, CurrentStaySeconds(), uiImagePath).Show();
             grpCommon.Controls.Add(btnTest);
             grpCommon.Controls.Add(btnClearSound);
             grpCommon.Controls.Add(btnTestPopup);
@@ -497,11 +503,21 @@ namespace AlarmClockApp
             grpCommon.Controls.Add(numStay);
             grpCommon.Controls.Add(cboStayUnit);
             grpCommon.Controls.Add(chkNoAuto);
+            // 動態UI圖片（自訂角色圖；空=預設時鐘造型）
+            grpCommon.Controls.Add(new Label { Text = "動態圖片：", Left = 12, Top = 154, Width = 76, Font = normal, ForeColor = Color.Black });
+            txtUiImage = new TextBox { Left = 90, Top = 151, Width = 276, ReadOnly = true, Text = UiImageLabel(), Font = normal };
+            btnUiImage = new Button { Text = "瀏覽…", Left = 372, Top = 150, Width = 64, Height = 26 };
+            btnUiImage.Click += (s, e) => BrowseUiImage();
+            btnUiReset = new Button { Text = "用預設", Left = 442, Top = 150, Width = 64, Height = 26 };
+            btnUiReset.Click += (s, e) => { uiImagePath = ""; txtUiImage.Text = UiImageLabel(); SaveSettings(); };
+            grpCommon.Controls.Add(txtUiImage);
+            grpCommon.Controls.Add(btnUiImage);
+            grpCommon.Controls.Add(btnUiReset);
 
             // ── 指定時間鬧鐘 ──
             grpClock = new GroupBox
             {
-                Text = "指定時間鬧鐘", Left = 12, Top = 226, Width = 524, Height = 122,
+                Text = "指定時間鬧鐘", Left = 12, Top = 258, Width = 524, Height = 122,
                 BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
                 ForeColor = Accent
             };
@@ -540,7 +556,7 @@ namespace AlarmClockApp
             // ── 倒數計時 ──
             grpCountdown = new GroupBox
             {
-                Text = "倒數計時", Left = 12, Top = 356, Width = 524, Height = 94,
+                Text = "倒數計時", Left = 12, Top = 388, Width = 524, Height = 94,
                 BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
                 ForeColor = Accent
             };
@@ -565,7 +581,7 @@ namespace AlarmClockApp
             // ── 鬧鐘清單 群組 ──
             var grpList = new GroupBox
             {
-                Text = "鬧鐘清單", Left = 12, Top = 458, Width = 524, Height = 252,
+                Text = "鬧鐘清單", Left = 12, Top = 490, Width = 524, Height = 252,
                 BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
                 ForeColor = Accent
             };
@@ -637,7 +653,7 @@ namespace AlarmClockApp
             // 統一按鈕樣式
             StyleButton(btnAdd, true);
             StyleButton(btnCountdown, true);
-            foreach (var b in new[] { btnNow, btnBrowse, btnTest, btnClearSound, btnTestPopup, btnDelete, btnToggle, btnAddPreset, btnDelPreset, btnLine, btnHelp })
+            foreach (var b in new[] { btnNow, btnBrowse, btnTest, btnClearSound, btnTestPopup, btnDelete, btnToggle, btnAddPreset, btnDelPreset, btnLine, btnHelp, btnUiImage, btnUiReset })
                 StyleButton(b, false);
 
             tray = new NotifyIcon
@@ -915,6 +931,27 @@ namespace AlarmClockApp
             return soundPath;
         }
 
+        private string UiImageLabel()
+        {
+            if (string.IsNullOrEmpty(uiImagePath)) return "（預設時鐘造型）";
+            return Path.GetFileName(uiImagePath);
+        }
+
+        private void BrowseUiImage()
+        {
+            using (var dlg = new OpenFileDialog())
+            {
+                dlg.Title = "選擇動態UI圖片（建議去背 PNG）";
+                dlg.Filter = "圖片檔 (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|所有檔案 (*.*)|*.*";
+                if (dlg.ShowDialog() == DialogResult.OK)
+                {
+                    uiImagePath = dlg.FileName;
+                    txtUiImage.Text = UiImageLabel();
+                    SaveSettings();
+                }
+            }
+        }
+
         private void BrowseSound()
         {
             using (var dlg = new OpenFileDialog())
@@ -1093,7 +1130,7 @@ namespace AlarmClockApp
             string bigTime = a.Countdown
                 ? DateTime.Now.ToString("HH:mm:ss")
                 : string.Format("{0:00}:{1:00}:{2:00}", a.Hour, a.Minute, a.Second);
-            new AlarmPopup(a.Text, bigTime, a.SoundFile, a.StaySeconds).Show();
+            new AlarmPopup(a.Text, bigTime, a.SoundFile, a.StaySeconds, uiImagePath).Show();
 
             // 同時推播到 LINE 群組
             if (lineOn && lineToken.Length > 0 && lineTo.Length > 0)
@@ -1179,10 +1216,12 @@ namespace AlarmClockApp
                         else if (key == "line_on") lineOn = val.Trim() == "1";
                         else if (key == "line_token") lineToken = val;
                         else if (key == "line_to") lineTo = val;
+                        else if (key == "ui_image") uiImagePath = val;
                     }
                 }
                 chkMasterStop.Checked = paused;
                 tray.Text = paused ? "桌面鬧鐘（已暫停）" : "桌面鬧鐘（執行中）";
+                if (txtUiImage != null) txtUiImage.Text = UiImageLabel();
             }
             catch { }
             finally { loadingSettings = false; }
@@ -1197,6 +1236,7 @@ namespace AlarmClockApp
                 sb.AppendLine("line_on=" + (lineOn ? "1" : "0"));
                 sb.AppendLine("line_token=" + lineToken);
                 sb.AppendLine("line_to=" + lineTo);
+                sb.AppendLine("ui_image=" + uiImagePath);
                 File.WriteAllText(settingsPath, sb.ToString());
             }
             catch { }
@@ -1274,23 +1314,38 @@ namespace AlarmClockApp
         private SoundPlayer wavLoop;
         private bool useSystemBeep;
         private bool soundStopped;
+        private readonly string imagePath;
+        private Image charImage;      // 自訂角色圖（null=用預設時鐘造型）
 
         // 版面
-        private readonly Rectangle bubbleRect = new Rectangle(12, 8, 416, 76);
-        private readonly Rectangle btnSnoozeRect = new Rectangle(112, 54, 100, 24);
-        private readonly Rectangle btnOkRect = new Rectangle(228, 54, 100, 24);
+        private Rectangle bubbleRect = new Rectangle(12, 8, 416, 76);
+        private Rectangle btnSnoozeRect = new Rectangle(112, 54, 100, 24);
+        private Rectangle btnOkRect = new Rectangle(228, 54, 100, 24);
         private const int ClockCx = 220;
         private const int ClockCy = 188;
         private const float ClockR = 70f;
         private Bitmap canvas;
         private int winX, winY;
 
-        public AlarmPopup(string message, string timeText, string soundFile, int staySeconds)
+        public AlarmPopup(string message, string timeText, string soundFile, int staySeconds, string imagePath)
         {
             this.message = message;
             this.timeText = timeText;
             this.soundFile = soundFile;
             this.staySeconds = staySeconds;
+            this.imagePath = imagePath;
+            if (!string.IsNullOrEmpty(imagePath) && File.Exists(imagePath))
+            {
+                try { using (var tmp = Image.FromFile(imagePath)) charImage = new Bitmap(tmp); }
+                catch { charImage = null; }
+            }
+            if (charImage != null)
+            {
+                // 自訂圖片無「肚子」放字：泡泡加高以容納 時間 + 提醒文字 + 按鈕
+                bubbleRect = new Rectangle(12, 8, 416, 100);
+                btnSnoozeRect = new Rectangle(112, 74, 100, 24);
+                btnOkRect = new Rectangle(228, 74, 100, 24);
+            }
 
             bool autoClose = staySeconds > 0;
             moveDurationMs = autoClose ? staySeconds * 1000 : DefaultMoveMs;
@@ -1345,8 +1400,9 @@ namespace AlarmClockApp
                 g.Clear(Color.Transparent);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-                if (!moving) DrawBubble(g);          // 停駐後才顯示對話框（畫在鬧鐘後面）
-                DrawClock(g);
+                if (!moving) DrawBubble(g);          // 停駐後才顯示對話框（畫在角色後面）
+                if (charImage != null) DrawImageChar(g);
+                else DrawClock(g);
                 if (!moving)                          // 停駐後才顯示按鈕
                 {
                     DrawButton(g, btnSnoozeRect, "稍後 5 分");
@@ -1438,12 +1494,46 @@ namespace AlarmClockApp
                 });
             }
 
-            // 泡泡只顯示時間（提醒文字改放鬧鐘肚子）
             using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
-            using (var fTime = new Font("Consolas", 24F, FontStyle.Bold))
             using (var bTime = new SolidBrush(Color.Firebrick))
-                g.DrawString(timeText, fTime, bTime,
-                    new RectangleF(bubbleRect.Left, bubbleRect.Top + 2, bubbleRect.Width, 42), sf);
+            using (var bMsg = new SolidBrush(Color.FromArgb(40, 40, 40)))
+            {
+                if (charImage != null)
+                {
+                    // 自訂圖片無「肚子」可放字：時間 + 提醒文字都放泡泡
+                    using (var fTime = new Font("Consolas", 19F, FontStyle.Bold))
+                    using (var fMsg = new Font("Microsoft JhengHei", 12F, FontStyle.Bold))
+                    {
+                        g.DrawString(timeText, fTime, bTime,
+                            new RectangleF(bubbleRect.Left, bubbleRect.Top + 4, bubbleRect.Width, 30), sf);
+                        string disp = message ?? "";
+                        if (disp.Length > 16) disp = disp.Substring(0, 16) + "…";
+                        g.DrawString(disp, fMsg, bMsg,
+                            new RectangleF(bubbleRect.Left + 6, bubbleRect.Top + 36, bubbleRect.Width - 12, 28), sf);
+                    }
+                }
+                else
+                {
+                    // 預設時鐘：泡泡只顯示時間（提醒文字在時鐘肚子）
+                    using (var fTime = new Font("Consolas", 24F, FontStyle.Bold))
+                        g.DrawString(timeText, fTime, bTime,
+                            new RectangleF(bubbleRect.Left, bubbleRect.Top + 2, bubbleRect.Width, 42), sf);
+                }
+            }
+        }
+
+        // 畫自訂角色圖：等比例縮放置中，走動時上下擺動
+        private void DrawImageChar(Graphics g)
+        {
+            const float maxW = 184f, maxH = 162f;
+            float iw = charImage.Width, ih = charImage.Height;
+            float scale = Math.Min(maxW / iw, maxH / ih);
+            float dw = iw * scale, dh = ih * scale;
+            float bob = moving ? -(float)Math.Abs(Math.Sin(legPhase)) * 6f : 0f;
+            float dxp = ClockCx - dw / 2f;
+            float dyp = 208f - dh / 2f + bob;   // 置於泡泡下方區域中央
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(charImage, dxp, dyp, dw, dh);
         }
 
         // 時鐘造型：紅色鐘體 + 金色鈴鐺，肚子（白色錶面）放提醒文字（無眼睛、無指針）
@@ -1593,17 +1683,18 @@ namespace AlarmClockApp
             if (animTimer != null) { animTimer.Stop(); animTimer.Dispose(); animTimer = null; }
             StopSoundOnly();
             if (canvas != null) { canvas.Dispose(); canvas = null; }
+            if (charImage != null) { charImage.Dispose(); charImage = null; }
         }
 
         private void Snooze()
         {
-            string m = message, tt = timeText, sf = soundFile;
+            string m = message, tt = timeText, sf = soundFile, ip = imagePath;
             int ss = staySeconds;
             var t = new Timer { Interval = 5 * 60 * 1000 };
             t.Tick += (s, e) =>
             {
                 t.Stop(); t.Dispose();
-                new AlarmPopup(m, tt, sf, ss).Show();
+                new AlarmPopup(m, tt, sf, ss, ip).Show();
             };
             t.Start();
         }
