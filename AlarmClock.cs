@@ -267,6 +267,7 @@ namespace AlarmClockApp
         private string lineToken = "";
         private string lineTo = "";
         private Button btnLine;
+        private CheckBox chkAutoStart;
 
         // 動態UI自訂圖片（空=用預設時鐘造型）
         private string uiImagePath = "";
@@ -591,7 +592,9 @@ namespace AlarmClockApp
             cboSort.SelectedIndex = 0;
             cboSort.SelectedIndexChanged += (s, e) => RefreshList();
             grpList.Controls.Add(cboSort);
-            grpList.Controls.Add(new Label { Text = "（雙擊項目可編輯）", Left = 214, Top = 26, Width = 130, Font = normal, ForeColor = Color.Gray });
+            chkAutoStart = new CheckBox { Text = "開機自動啟動", Left = 214, Top = 25, Width = 140, Font = normal, ForeColor = Color.Black, Checked = IsAutoStart() };
+            chkAutoStart.CheckedChanged += (s, e) => SetAutoStart(chkAutoStart.Checked);
+            grpList.Controls.Add(chkAutoStart);
             btnLine = new Button { Text = "LINE 通知設定…", Left = 360, Top = 21, Width = 152, Height = 28 };
             btnLine.Click += (s, e) => ShowLineDialog();
             grpList.Controls.Add(btnLine);
@@ -668,6 +671,10 @@ namespace AlarmClockApp
             tray.DoubleClick += (s, e) => ShowFromTray();
 
             FormClosing += MainForm_FormClosing;
+
+            // 開機以 /min 啟動 → 直接縮到系統匣待命，不跳主視窗
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "/min") >= 0)
+                Load += (s, e) => { Hide(); };
         }
 
         // 圓角矩形路徑（用於反鋸齒自繪，邊緣平滑無毛邊）
@@ -1240,6 +1247,38 @@ namespace AlarmClockApp
                 File.WriteAllText(settingsPath, sb.ToString());
             }
             catch { }
+        }
+
+        // ---- 開機自動啟動（寫入 HKCU Run）----
+        private const string RunSubKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const string RunValueName = "DesktopAlarm";
+
+        private static bool IsAutoStart()
+        {
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunSubKey))
+                    return k != null && k.GetValue(RunValueName) != null;
+            }
+            catch { return false; }
+        }
+
+        private void SetAutoStart(bool on)
+        {
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunSubKey, true))
+                {
+                    if (k == null) return;
+                    if (on) k.SetValue(RunValueName, "\"" + Application.ExecutablePath + "\" /min");
+                    else if (k.GetValue(RunValueName) != null) k.DeleteValue(RunValueName, false);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "設定開機自動啟動失敗：" + ex.Message, "桌面鬧鐘",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         // LINE 通知設定對話框
