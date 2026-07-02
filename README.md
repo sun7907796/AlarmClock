@@ -1,5 +1,8 @@
 # 桌面鬧鐘 AlarmClock
 
+[![最新版本](https://img.shields.io/github/v/release/sun7907796/AlarmClock?label=下載&sort=semver)](https://github.com/sun7907796/AlarmClock/releases/latest)
+[![平台](https://img.shields.io/badge/平台-Windows-blue)](#)
+
 Windows 桌面鬧鐘程式（C# WinForms，編譯成單一 `.exe`，使用系統內建 .NET Framework，免安裝執行環境）。
 設定時間或倒數,時間到時會有一隻**會走路的角色**從螢幕下方出現,搭配對話框顯示提醒文字,可同步推播到 **LINE**。
 
@@ -27,7 +30,7 @@ Windows 桌面鬧鐘程式（C# WinForms，編譯成單一 `.exe`，使用系統
 
 ## 下載與執行
 
-1. 到 [Releases](https://github.com/sun7907796/AlarmClock/releases) 下載 zip(或直接下載整個專案)。
+1. 到 [**最新 Release**](https://github.com/sun7907796/AlarmClock/releases/latest) 下載 `AlarmClock-app.zip`(或下載整個專案)。
 2. 解壓縮後,**保持所有檔案在同一資料夾**(exe 會用到同資料夾的鈴聲與圖片)。
 3. 雙擊 **`AlarmClock.exe`** 即可,免安裝。
 
