@@ -8,3 +8,6 @@ reminders.txt
 *.realbak
 _*.png
 *.tmp
+
+# 發佈打包（供 Release 上傳，不進版控）
+*.zip
