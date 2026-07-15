@@ -63,14 +63,16 @@ namespace AlarmClockApp
         public string SoundFile;     // 自訂音檔路徑，空=系統音效
         public bool Loop;            // 倒數模式：響完後繼續循環倒數
         public int IntervalSeconds;  // 循環間隔（秒）
-        public int StaySeconds;      // 提醒視窗停留秒數，0 = 不自動關閉
+        public int StaySeconds;      // 提醒視窗停留秒數；-1 = 不自動關閉(手動)，0 = 極短即關
         public int Days;             // 重複的星期（bit0=日…bit6=六）；Repeat 且 Days=0 表示每天
+        public string CloseTitle = "";// 到點強制關閉「標題含此字」的視窗（空=不關）
         public bool Enabled = true;
         public DateTime? LastFired;  // 時鐘模式避免同一秒重複觸發
 
         private string StayText()
         {
-            if (StaySeconds <= 0) return "停留:手動";
+            if (StaySeconds < 0) return "停留:手動";
+            if (StaySeconds == 0) return "停留0";
             if (StaySeconds % 60 == 0) return "停留" + (StaySeconds / 60) + "分";
             return "停留" + StaySeconds + "秒";
         }
@@ -103,15 +105,16 @@ namespace AlarmClockApp
         {
             string status = Enabled ? "" : "（已停用）";
             string snd = string.IsNullOrEmpty(SoundFile) ? "" : " ♪" + Path.GetFileName(SoundFile);
+            string cls = string.IsNullOrEmpty(CloseTitle) ? "" : " ⏹關[" + CloseTitle + "]";
             if (Countdown)
             {
                 string tag = Loop ? string.Format("每{0}循環", DurText(IntervalSeconds)) : "倒數";
                 string when = Loop ? string.Format("下次 {0:HH:mm:ss}", Target) : string.Format("{0:MM/dd HH:mm:ss}", Target);
-                return string.Format("{0}  [{1}] {2}{3} ({4}) {5}", when, tag, Text, snd, StayText(), status);
+                return string.Format("{0}  [{1}] {2}{3}{4} ({5}) {6}", when, tag, Text, snd, cls, StayText(), status);
             }
             string rep = !Repeat ? "單次" : (Days == 0 ? "每天" : WeekText(Days));
-            return string.Format("{0:00}:{1:00}:{2:00}  [{3}] {4}{5} ({6}) {7}",
-                Hour, Minute, Second, rep, Text, snd, StayText(), status);
+            return string.Format("{0:00}:{1:00}:{2:00}  [{3}] {4}{5}{6} ({7}) {8}",
+                Hour, Minute, Second, rep, Text, snd, cls, StayText(), status);
         }
 
         private static string Esc(string s)
@@ -121,14 +124,14 @@ namespace AlarmClockApp
 
         public string Serialize()
         {
-            // 格式 v5： mode|H|M|S|R|TARGET|SOUND|LOOP|INTERVALSEC|STAY|DAYS|TEXT
+            // 格式 v6： mode|H|M|S|R|TARGET|SOUND|LOOP|INTERVALSEC|STAY|DAYS|CLOSE|TEXT
             string mode = Countdown ? "D" : "C";
             string target = Countdown ? Target.ToString("yyyyMMddHHmmss") : "";
             return string.Join("|", new string[]
             {
                 mode, Hour.ToString(), Minute.ToString(), Second.ToString(), Repeat ? "1" : "0",
                 target, Esc(SoundFile), Loop ? "1" : "0",
-                IntervalSeconds.ToString(), StaySeconds.ToString(), Days.ToString(), Esc(Text)
+                IntervalSeconds.ToString(), StaySeconds.ToString(), Days.ToString(), Esc(CloseTitle), Esc(Text)
             });
         }
 
@@ -164,7 +167,13 @@ namespace AlarmClockApp
                 int.TryParse(p[7], out lp); a.Loop = lp == 1;
                 int.TryParse(p[8], out iv); a.IntervalSeconds = iv;
                 int.TryParse(p[9], out st); a.StaySeconds = st;
-                if (p.Length >= 12)
+                if (p.Length >= 13)        // v6：含 CLOSE
+                {
+                    int dd; int.TryParse(p[10], out dd); a.Days = dd;
+                    a.CloseTitle = p[11];
+                    a.Text = p[12];
+                }
+                else if (p.Length >= 12)   // v5
                 {
                     int dd; int.TryParse(p[10], out dd); a.Days = dd;
                     a.Text = p[11];
@@ -274,6 +283,8 @@ namespace AlarmClockApp
         private TextBox txtUiImage;
         private Button btnUiImage;
         private Button btnUiReset;
+        private TextBox txtCloseTitle;   // 到點強制關閉的視窗標題關鍵字
+        private Button btnClosePreset;   // 快捷：一鍵套用「到點關閉」設定
         private Button btnHelp;
 
         public MainForm()
@@ -379,6 +390,11 @@ namespace AlarmClockApp
                 "■ 暫停所有鬧鐘",
                 "  ‧ 勾選後所有鬧鐘暫停不執行；取消勾選恢復(倒數會重新計時)。",
                 "",
+                "■ 到點強制關閉(選用)",
+                "  ‧ 在「關閉視窗」填視窗標題關鍵字，時間到會強制結束標題含該字的程式(如遊戲、連線程式)。",
+                "  ‧ 屬強制結束，不會提示存檔；留空則不關閉。",
+                "  ‧ 可按「到點關閉」快捷鍵一鍵套用(提醒『關閉檔案』、停留 0)，再填視窗標題即可。",
+                "",
                 "■ LINE 通知(選用)",
                 "  ‧ 「LINE 通知設定…」填入 Channel access token 與目標 ID。",
                 "  ‧ 目標 ID：群組為 C 開頭、個人為 U 開頭(需先把 Bot 加為好友/邀入群組)。",
@@ -422,7 +438,7 @@ namespace AlarmClockApp
         private void BuildUi()
         {
             Text = "桌面鬧鐘";
-            ClientSize = new Size(548, 750);
+            ClientSize = new Size(548, 786);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -455,7 +471,7 @@ namespace AlarmClockApp
             // ── 共用設定（提醒內容 / 鈴聲 / 停留時間）──
             var grpCommon = new GroupBox
             {
-                Text = "提醒內容與鈴聲（共用）", Left = 12, Top = 66, Width = 524, Height = 184,
+                Text = "提醒內容與鈴聲（共用）", Left = 12, Top = 66, Width = 524, Height = 220,
                 BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
                 ForeColor = Accent
             };
@@ -495,7 +511,7 @@ namespace AlarmClockApp
             grpCommon.Controls.Add(btnTestPopup);
             // 動態UI停留時間
             grpCommon.Controls.Add(new Label { Text = "停留時間：", Left = 12, Top = 122, Width = 76, Font = normal, ForeColor = Color.Black });
-            numStay = new NumericUpDown { Left = 90, Top = 119, Width = 56, Minimum = 1, Maximum = 999, Value = 3, Font = normal };
+            numStay = new NumericUpDown { Left = 90, Top = 119, Width = 56, Minimum = 0, Maximum = 999, Value = 3, Font = normal };
             cboStayUnit = new ComboBox { Left = 150, Top = 119, Width = 56, DropDownStyle = ComboBoxStyle.DropDownList, Font = normal };
             cboStayUnit.Items.AddRange(new object[] { "分", "秒" });
             cboStayUnit.SelectedIndex = 0;
@@ -514,11 +530,26 @@ namespace AlarmClockApp
             grpCommon.Controls.Add(txtUiImage);
             grpCommon.Controls.Add(btnUiImage);
             grpCommon.Controls.Add(btnUiReset);
+            // 到點強制關閉指定視窗（標題關鍵字）+ 快捷設定
+            grpCommon.Controls.Add(new Label { Text = "關閉視窗：", Left = 12, Top = 186, Width = 76, Font = normal, ForeColor = Color.Black });
+            txtCloseTitle = new TextBox { Left = 90, Top = 183, Width = 210, Font = normal };
+            grpCommon.Controls.Add(txtCloseTitle);
+            btnClosePreset = new Button { Text = "到點關閉", Left = 306, Top = 182, Width = 92, Height = 26 };
+            btnClosePreset.Click += (s, e) =>
+            {
+                cboReminder.Text = "關閉檔案";
+                chkNoAuto.Checked = false;
+                cboStayUnit.SelectedIndex = 0;   // 分
+                numStay.Value = 0;               // 停留時間 = 0 分
+                txtCloseTitle.Focus();
+            };
+            grpCommon.Controls.Add(btnClosePreset);
+            grpCommon.Controls.Add(new Label { Text = "視窗標題關鍵字", Left = 404, Top = 186, Width = 112, Font = normal, ForeColor = Color.Gray });
 
             // ── 指定時間鬧鐘 ──
             grpClock = new GroupBox
             {
-                Text = "指定時間鬧鐘", Left = 12, Top = 258, Width = 524, Height = 122,
+                Text = "指定時間鬧鐘", Left = 12, Top = 294, Width = 524, Height = 122,
                 BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
                 ForeColor = Accent
             };
@@ -557,7 +588,7 @@ namespace AlarmClockApp
             // ── 倒數計時 ──
             grpCountdown = new GroupBox
             {
-                Text = "倒數計時", Left = 12, Top = 388, Width = 524, Height = 94,
+                Text = "倒數計時", Left = 12, Top = 424, Width = 524, Height = 94,
                 BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
                 ForeColor = Accent
             };
@@ -582,7 +613,7 @@ namespace AlarmClockApp
             // ── 鬧鐘清單 群組 ──
             var grpList = new GroupBox
             {
-                Text = "鬧鐘清單", Left = 12, Top = 490, Width = 524, Height = 252,
+                Text = "鬧鐘清單", Left = 12, Top = 526, Width = 524, Height = 252,
                 BackColor = Color.White, Font = new Font("Microsoft JhengHei", 9F, FontStyle.Bold),
                 ForeColor = Accent
             };
@@ -656,7 +687,7 @@ namespace AlarmClockApp
             // 統一按鈕樣式
             StyleButton(btnAdd, true);
             StyleButton(btnCountdown, true);
-            foreach (var b in new[] { btnNow, btnBrowse, btnTest, btnClearSound, btnTestPopup, btnDelete, btnToggle, btnAddPreset, btnDelPreset, btnLine, btnHelp, btnUiImage, btnUiReset })
+            foreach (var b in new[] { btnNow, btnBrowse, btnTest, btnClearSound, btnTestPopup, btnDelete, btnToggle, btnAddPreset, btnDelPreset, btnLine, btnHelp, btnUiImage, btnUiReset, btnClosePreset })
                 StyleButton(b, false);
 
             tray = new NotifyIcon
@@ -793,9 +824,10 @@ namespace AlarmClockApp
             cboReminder.Text = a.Text;
             soundPath = a.SoundFile;
             txtSound.Text = SoundLabel();
+            txtCloseTitle.Text = a.CloseTitle;
 
             // 停留時間
-            if (a.StaySeconds <= 0) chkNoAuto.Checked = true;
+            if (a.StaySeconds < 0) chkNoAuto.Checked = true;
             else
             {
                 chkNoAuto.Checked = false;
@@ -845,6 +877,7 @@ namespace AlarmClockApp
             a.Text = CurrentText();
             a.SoundFile = soundPath;
             a.StaySeconds = CurrentStaySeconds();
+            a.CloseTitle = txtCloseTitle.Text.Trim();
 
             if (a.Countdown)
             {
@@ -925,9 +958,9 @@ namespace AlarmClockApp
 
         private int CurrentStaySeconds()
         {
-            if (chkNoAuto.Checked) return 0;
+            if (chkNoAuto.Checked) return -1;   // 不自動關閉（手動）
             int v = (int)numStay.Value;
-            return cboStayUnit.SelectedIndex == 0 ? v * 60 : v;  // 分 : 秒
+            return cboStayUnit.SelectedIndex == 0 ? v * 60 : v;  // 分 : 秒（可為 0）
         }
 
         private string SoundLabel()
@@ -1037,7 +1070,8 @@ namespace AlarmClockApp
                 Repeat = chkRepeat.Checked,
                 Days = days,
                 SoundFile = soundPath,
-                StaySeconds = CurrentStaySeconds()
+                StaySeconds = CurrentStaySeconds(),
+                CloseTitle = txtCloseTitle.Text.Trim()
             });
             SaveAlarms(); RefreshList();
         }
@@ -1055,7 +1089,8 @@ namespace AlarmClockApp
                 SoundFile = soundPath,
                 Loop = chkLoop.Checked,
                 IntervalSeconds = intervalSec,
-                StaySeconds = CurrentStaySeconds()
+                StaySeconds = CurrentStaySeconds(),
+                CloseTitle = txtCloseTitle.Text.Trim()
             });
             SaveAlarms(); RefreshList();
             string loopMsg = chkLoop.Checked ? string.Format("，之後每 {0} 循環提醒", Alarm.DurText(intervalSec)) : "";
@@ -1146,6 +1181,29 @@ namespace AlarmClockApp
                 string tok = lineToken, to = lineTo;
                 var th = new System.Threading.Thread(() => SendLine(tok, to, msg)) { IsBackground = true };
                 th.Start();
+            }
+
+            // 到點強制關閉指定視窗（標題含關鍵字者）
+            if (!string.IsNullOrEmpty(a.CloseTitle))
+                ForceCloseByTitle(a.CloseTitle);
+        }
+
+        // 強制結束「主視窗標題含 keyword」的程式（不會提示存檔）
+        private static void ForceCloseByTitle(string keyword)
+        {
+            int me = System.Diagnostics.Process.GetCurrentProcess().Id;
+            foreach (var p in System.Diagnostics.Process.GetProcesses())
+            {
+                try
+                {
+                    if (p.Id == me) continue;   // 不關自己
+                    string t = p.MainWindowTitle;
+                    if (!string.IsNullOrEmpty(t) &&
+                        t.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
+                        p.Kill();
+                }
+                catch { }
+                finally { try { p.Dispose(); } catch { } }
             }
         }
 
@@ -1395,10 +1453,10 @@ namespace AlarmClockApp
                 btnOkRect = new Rectangle(228, 74, 100, 24);
             }
 
-            bool autoClose = staySeconds > 0;
+            bool autoClose = staySeconds >= 0;   // 0 = 極短停留即關閉；<0 = 不自動關閉（手動）
             moveDurationMs = autoClose ? staySeconds * 1000 : DefaultMoveMs;
             closeAtMs = autoClose ? moveDurationMs + ParkMs : -1;
-            soundStopSec = Math.Min(autoClose ? staySeconds : DefaultMoveMs / 1000, 60);
+            soundStopSec = Math.Min(autoClose ? Math.Max(staySeconds, 1) : DefaultMoveMs / 1000, 60);
 
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
